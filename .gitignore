@@ -1,0 +1,7 @@
+# 本地工作流状态（OpenCode/OhMyOpenCode）
+.omo/
+
+# 操作系统杂项
+.DS_Store
+Thumbs.db
+desktop.ini
