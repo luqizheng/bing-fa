@@ -1,0 +1,17 @@
+{
+    "name": "ChinaBettle.Intel",
+    "rootNamespace": "ChinaBettle.Intel",
+    "references": [
+        "ChinaBettle.Foundation",
+        "ChinaBettle.Time"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

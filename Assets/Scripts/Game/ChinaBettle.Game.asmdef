@@ -1,0 +1,22 @@
+{
+    "name": "ChinaBettle.Game",
+    "rootNamespace": "ChinaBettle.Game",
+    "references": [
+        "ChinaBettle.Foundation",
+        "ChinaBettle.Time",
+        "ChinaBettle.Units",
+        "ChinaBettle.Intel",
+        "ChinaBettle.Stratagems",
+        "ChinaBettle.AI",
+        "ChinaBettle.Battle"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
