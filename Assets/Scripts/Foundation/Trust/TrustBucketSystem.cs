@@ -4,7 +4,7 @@ using System.Collections.Generic;
 namespace ChinaBettle.Foundation.Trust;
 
 /// <summary>
-/// AI 信念层：按情报主题分桶的信任度系统（情报规格 §5；真源 TRUST-01~06/09）。
+/// AI 信念层：按情报主题分桶的信任度系统（情报规格 §5；真源 TRUST-01~06/09/11）。
 /// 桶语义（TRUST-09）：对主题【当前载荷】的总体采信度，0–1 标量，无方向——
 /// 不存在"信兵力多/信兵力少"两个桶；桶高 + 新载荷达可信档 = AI 采信当前载荷。
 /// 纯逻辑、无 Unity 依赖。
@@ -50,6 +50,19 @@ public sealed class TrustBucketSystem
         lastUpdateSeconds[topic] = battleClockSeconds;
     }
 
+    /// <summary>
+    /// 局内反思负反馈（TRUST-11）：AI 因采信该主题情报而遭重大损失（≥30% 参战兵力/据点失守）时，
+    /// 桶 ×0.5（默认），模拟"吃一堑长一智"。与 TRUST-06 识破区分：识破=情报层识破假情报，反思=行动层吃亏。
+    /// 仅改数值，是否触发强制复核由上层 AI 决策负责。
+    /// </summary>
+    public float ApplyReflectionPenalty(string topic, float battleClockSeconds)
+    {
+        float next = Math.Clamp(Get(topic) * config.ReflectionPenaltyMultiplier, config.MinValue, config.MaxValue);
+        buckets[topic] = next;
+        lastUpdateSeconds[topic] = battleClockSeconds;
+        return next;
+    }
+
     /// <summary>信源独立因子（TRUST-03）：最近 3 条情报中不同来源类型数 → 1 种 0.6 / 2 种 0.8 / ≥3 种 1.0。</summary>
     public static float IndependenceFactor(int distinctSourceKinds, TrustConfig? config = null)
     {
@@ -59,12 +72,16 @@ public sealed class TrustBucketSystem
              : c.IndependenceOneType;
     }
 
-    /// <summary>时间衰减因子（TRUST-04）：距该桶上次更新 ≤2 分钟 1.0，否则 0.5。新桶按陈旧处理。</summary>
+    /// <summary>
+    /// 时间衰减因子（TRUST-04）：距该桶上次更新 ≤2 分钟 1.0，否则 0.5。
+    /// 全新桶的首次更新按近期 1.0（与情报规格 §4.1 阶段一 t=2:00 首条 0.50→0.55 一致；
+    /// 主题尚不存在时无所谓"陈旧"）。
+    /// </summary>
     public float TimeFactor(string topic, float battleClockSeconds)
     {
         if (!lastUpdateSeconds.TryGetValue(topic, out var last))
         {
-            return config.TimeFactorStale;
+            return config.TimeFactorRecent;
         }
 
         float minutesSince = (battleClockSeconds - last) / 60f;

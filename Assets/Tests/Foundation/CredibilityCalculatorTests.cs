@@ -43,7 +43,7 @@ public sealed class CredibilityCalculatorTests
     [Test]
     public void Aggregate_WeightsSourcesByTable()
     {
-        // INTEL-05：文书 1.2、目视 1.0、口供 0.6。(80×1.2+60×1.0+40×0.6)/2.8 = 68.57
+        // INTEL-05：文书 1.2、目视 1.0、口供 0.6。(80×1.2+60×1.0+40×0.6)/2.8 = 180/2.8 ≈ 64.29
         var items = new (float, IntelSourceType)[]
         {
             (80f, IntelSourceType.CapturedDocument),
@@ -51,7 +51,7 @@ public sealed class CredibilityCalculatorTests
             (40f, IntelSourceType.Prisoner),
         };
         float? agg = CredibilityCalculator.Aggregate(items, C);
-        Assert.That(agg, Is.EqualTo(68.57f).Within(0.05f));
+        Assert.That(agg, Is.EqualTo(64.29f).Within(0.05f));
     }
 
     [Test]

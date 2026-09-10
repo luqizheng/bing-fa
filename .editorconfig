@@ -1,0 +1,59 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{json,asmdef,uxml,uss}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
+
+[*.cs]
+# C# 约定：与 Unity 6 默认风格对齐
+indent_size = 4
+#### 命名 ####
+dotnet_naming_rule.types_and_namespaces_pascal.severity = error
+dotnet_naming_rule.types_and_namespaces_pascal.symbols = public_types
+dotnet_naming_rule.types_and_namespaces_pascal.style = pascal_case
+dotnet_naming_symbols.public_types.applicable_kinds = class, struct, interface, enum, delegate, namespace
+dotnet_naming_symbols.public_types.applicable_accessibilities = *
+dotnet_naming_style.pascal_case.capitalization = pascal_case
+
+dotnet_naming_rule.interfaces_i_prefix.severity = error
+dotnet_naming_rule.interfaces_i_prefix.symbols = interfaces
+dotnet_naming_rule.interfaces_i_prefix.style = i_prefixed
+dotnet_naming_symbols.interfaces.applicable_kinds = interface
+dotnet_naming_symbols.interfaces.applicable_accessibilities = *
+dotnet_naming_style.i_prefixed.required_prefix = I
+dotnet_naming_style.i_prefixed.capitalization = pascal_case
+
+dotnet_naming_rule.private_fields_underscore.severity = suggestion
+dotnet_naming_rule.private_fields_underscore.symbols = private_fields
+dotnet_naming_rule.private_fields_underscore.style = underscore_camel
+dotnet_naming_symbols.private_fields.applicable_kinds = field
+dotnet_naming_symbols.private_fields.applicable_accessibilities = private
+dotnet_naming_style.underscore_camel.required_prefix = _
+dotnet_naming_style.underscore_camel.capitalization = camel_case
+
+dotnet_naming_rule.constants_pascal.severity = suggestion
+dotnet_naming_rule.constants_pascal.symbols = constants
+dotnet_naming_rule.constants_pascal.style = pascal_case
+dotnet_naming_symbols.constants.applicable_kinds = field
+dotnet_naming_symbols.constants.required_modifiers = const
+
+#### 花括号：Allman，与 Unity 官方示例一致 ####
+csharp_new_line_before_open_brace = all
+csharp_new_line_before_else = true
+csharp_new_line_before_catch = true
+csharp_new_line_before_finally = true
+
+#### 本项目硬性设计约定（代码审查必须遵守）####
+# 1) 禁止硬编码玩法数值：阈值/CD/倍率必须来自 *Config/ScriptableObject（真源表驱动）
+# 2) 禁止 as any 等价物：不用 null 抑制、不吞异常
+# 3) 计时必须声明 TimeLayer（战略=旬 / 战役=秒），禁止无归属的"回合/日"

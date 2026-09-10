@@ -2,7 +2,7 @@ namespace ChinaBettle.Foundation.Intel;
 
 /// <summary>
 /// 情报层可信度全部可调参数（真源 INTEL-01~08）。
-/// 默认实例给出 v1.1 真源表初值；运行期由数据配置（ScriptableObject 等）注入，代码不得散落魔法数字。
+/// 默认实例给出真源表初值；运行期由数据配置（ScriptableObject 等）注入，代码不得散落魔法数字。
 /// </summary>
 public sealed record CredibilityConfig(
     float ScoutVisualBase = 65f,

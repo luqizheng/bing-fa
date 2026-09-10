@@ -1,30 +1,24 @@
-# 本地工作流状态（OpenCode/OhMyOpenCode）
-.omo/
+# ---- Unity 标准忽略（基于 Unity 官方模板，Unity 6 适用）----
 
-# 操作系统杂项
-.DS_Store
-Thumbs.db
-desktop.ini
-
-# ---- Unity 生成目录（P2-5：Git 规范）----
-/[Ll]ibrary/
-/[Tt]emp/
-/[Oo]bj/
+# Unity 生成目录
 /[Bb]uild/
 /[Bb]uilds/
+/[Ll]ibrary/
 /[Ll]ogs/
+/[Oo]bj/
+/[Tt]emp/
 /[Uu]ser[Ss]ettings/
-
-# MemoryCaptures 等诊断产物
 /[Mm]emoryCaptures/
-
-# Recordings（Unity Recorder 等）
 /[Rr]ecordings/
 
-# 自动生成的工程/解决方案文件
+# Visual Studio / Rider / VS Code 客户端生成
+.vs/
+.idea/
+.vsconfig
 *.csproj
 *.unityproj
 *.sln
+*.slnx
 *.suo
 *.tmp
 *.user
@@ -37,19 +31,43 @@ desktop.ini
 *.opendb
 *.VC.db
 
-# Unity 32bit 构建的崩溃报告
+# Unity 元数据与崩溃
 sysinfo.txt
+crashlytics-build.properties
+*.stackdump
+
+# Burst
+/[Bb]urstCompiler.cache/
+
+# Addressables 构建产物
+/[Aa]ssets/[Aa]ddressable[Aa]ssets[Dd]ata/*/*.bin*
+/[Aa]ssets/[Ss]treamingAssets/aa.meta
+/[Aa]ssets/[Ss]treamingAssets/aa/*
+
+# 包管理
+/[Pp]ackages/packages-lock.json
+
+# 插件 DLL 调试符号按需保留，默认忽略 pdb
+*.pdb.meta
 
 # 构建产物
 *.apk
 *.aab
 *.unitypackage
 *.app
+*.exe
+*.dmg
+*.x86
+*.x86_64
+*.run
 
-# Rider / Visual Studio / VS Code 缓存
-.idea/
-.vs/
-.vscode/
+# ---- 操作系统杂项 ----
+.DS_Store
+Thumbs.db
+desktop.ini
 
-# Crashlytics / 其他 SDK 生成
-crashlytics-build.properties
+# ---- 本地工作流状态（OpenCode/OhMyOpenCode）----
+.omo/
+
+# ---- dotnet / C# LSP 本地验证临时工程 ----
+.tmp-dotnet/

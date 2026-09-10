@@ -12,9 +12,11 @@ public sealed class TrustBucketSystemTests
     [Test]
     public void Update_SpecExample_68Percent_TwoKinds_Recent_To059()
     {
-        // 情报规格 §5.2 算例：0.50 + 0.36×0.8×1.0×0.3 ≈ 0.586
+        // 情报规格 §5.2 算例：0.50 + 0.36×0.8×1.0×0.3 ≈ 0.586（距上次更新 1 分钟）。
+        // 先做一次历史更新建立"该主题已存在且近期更新"的前置，再以 60 秒后更新复现 time=1.0。
         var systemUnderTest = new TrustBucketSystem();
-        float next = systemUnderTest.Update(Topic, credibilityPercent: 68f, independence: 0.8f, battleClockSeconds: 0f);
+        systemUnderTest.Update(Topic, credibilityPercent: 50f, independence: 0.6f, battleClockSeconds: 0f);
+        float next = systemUnderTest.Update(Topic, credibilityPercent: 68f, independence: 0.8f, battleClockSeconds: 60f);
         Assert.That(next, Is.EqualTo(0.586f).Within(0.005f));
     }
 
@@ -34,6 +36,17 @@ public sealed class TrustBucketSystemTests
         systemUnderTest.Update(Topic, 90f, 1.0f, 0f);
         systemUnderTest.SetDetected(Topic, 60f);
         Assert.That(systemUnderTest.Get(Topic), Is.EqualTo(0.20f));
+    }
+
+    [Test]
+    public void ReflectionPenalty_HalvesBucket()
+    {
+        // TRUST-11：采信吃亏后桶 ×0.5，与识破置 0.2 区分。
+        var systemUnderTest = new TrustBucketSystem();
+        systemUnderTest.Update(Topic, 90f, 1.0f, 0f); // 推高桶
+        float before = systemUnderTest.Get(Topic);
+        float after = systemUnderTest.ApplyReflectionPenalty(Topic, 60f);
+        Assert.That(after, Is.EqualTo(before * 0.5f).Within(0.005f));
     }
 
     [Test]

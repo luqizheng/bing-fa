@@ -1,0 +1,16 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "lsp": {
+    "csharp": {
+      "command": ["/home/kudi/.dotnet/tools/csharp-ls"],
+      "extensions": [".cs", ".csproj", ".sln"],
+      "env": {
+        "DOTNET_SYSTEM_GLOBALIZATION_INVARIANT": "1",
+        "DOTNET_NOLOGO": "1",
+        "DOTNET_CLI_TELEMETRY_OPTOUT": "1",
+        "DOTNET_ROOT": "/home/kudi/.dotnet",
+        "PATH": "/home/kudi/.dotnet:/home/kudi/.dotnet/tools:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+      }
+    }
+  }
+}

@@ -2,9 +2,9 @@
 
 ## 项目现状（先读这条）
 
-- **纯设计阶段仓库**：截至 2026-09-10，仓库内没有任何代码、工程文件、构建脚本，也尚未 `git init`。不要假设存在构建/测试/lint 命令；不要凭空生成 Unity 工程结构（引擎已于 2026-09-10 拍板为 **Unity 6 LTS，C#**，但在用户明确要求开工前不要创建工程脚手架）。
+- **工程已初始化（2026-09-10）**：Unity 6 LTS 工程骨架已建（P2-5 落地，详见下文「Unity/C# 工程约定」）。Unity 编辑器本体经 Unity Hub 装于 Windows 侧 `D:\Unity\Hub\Editor`（版本 `6000.0.83f1`）；首次在 Windows 打开工程前注意 Hub 需登录并完成许可证激活。仓库已 `git init`，Git LFS 已本地启用。
 - **设计事实来源（按优先级）**：
-  1. [`Docs/关键数值与规则真源表_v1.1.md`](Docs/关键数值与规则真源表_v1.1.md)（《关键数值与规则真源表》）——跨文档复用的阈值/公式/CD/验收项的**唯一真源**；改数值先改此表再同步引用。
+  1. [`Docs/关键数值与规则真源表_v1.2.md`](Docs/关键数值与规则真源表_v1.2.md)（《关键数值与规则真源表》）——跨文档复用的阈值/公式/CD/验收项的**唯一真源**；改数值先改此表再同步引用。
   2. [`Docs/情报与可信度系统详细规格_v1.1.md`](Docs/情报与可信度系统详细规格_v1.1.md)（《情报与可信度系统详细规格 v1.1》，含 2026-09-10 勘误与边界闭合批）——情报生成、可信度公式、AI 信任桶（无方向载荷采信度/桶预养）、欺骗技能施计窗口+痕迹存续/识破、两类强制复核、UI 呈现、数据 schema 的规则真源。
   3. [`Docs/游戏设计文档_v1.2.md`](Docs/游戏设计文档_v1.2.md)（GDD v1.2，修订中）——总体设计；5 项 P0 与 9 项 P1 已全部关闭（双层时间、诡道技能槽位/反制、兵种克制/地形、战斗士气/补给/胜负、AI 优先级与玩家画像、幕僚系统、Unity 6 LTS、权威服务器架构），见附录 A；v1.2 为边界闭合批。
   4. [`Docs/游戏设计文档_v1.0.md`](Docs/游戏设计文档_v1.0.md) + [`Docs/游戏设计文档_v1.0_审校意见.md`](Docs/游戏设计文档_v1.0_审校意见.md)——历史基线与审校意见（P2 十二项中 P2-1/P2-7/P2-10 已关闭，其余待 P2 批合入）。
@@ -36,8 +36,25 @@
 - 存档：JSON 本地/Steam Cloud；历史事件以可回放"编年史"保存（§5.4）。
 - 目标平台：PC（Steam）优先，主机/移动端为后续。
 
+## Unity/C# 工程约定（2026-09-10 初始化，P2-5 落地）
+
+- **工程结构**：Unity 6 LTS 工程即仓库根（`ProjectSettings/ProjectVersion.txt` 钉 `6000.0.83f1`，changeset `dacc44548933`）。代码在 `Assets/Scripts/`，测试在 `Assets/Tests/`（EditMode/NUnit）。Library/Temp 等生成物已忽略，二进制资源走 Git LFS（见 `.gitattributes`）。
+- **asmdef 分层（依赖只能向下，禁止反向/环）**：
+  - `ChinaBettle.Foundation`：纯 C#、**零 UnityEngine 依赖**（`noEngineReferences: true`），承载全部核心规则公式——可信度、信任桶/门控、克制环/伤害/士气、双层时钟、补给饥饿、技能数据定义、目标优先级。**权威端与未来服务端共用此层。**
+  - `ChinaBettle.Time / Units / Intel / Stratagems / AI / Battle / Game`：依次向上，可用 UnityEngine；`Game` 为最顶层引导。
+  - 改公式先改 Foundation 纯逻辑，在 `Assets/Tests/` 加/改 EditMode 测试锁定真源算例（已锁定：fresh75、aged68、§4.1 预养链路、桶 0.586/0.20、异质信源识破、痕迹 10 分钟不刷新、克制环、伤害保底、谋略点经济）。
+- **数值纪律（与设计文档真源表同等强制）**：
+  - 禁止在逻辑代码里写魔法数字。所有阈值/CD/倍率/权重经 `*Config` record（`CredibilityConfig`/`TrustConfig`/`CombatConfig`/`SupplyConfig`/`StrategyPointConfig`/`DeceptionDetectionConfig`）注入，默认值必须等于真源表并在注释标注真源 ID（INTEL-/TRUST-/COMBAT-/FOOD-/SKILL-/DECP-）。
+  - 改数值顺序：先改《关键数值与规则真源表》→ 同步 Config 默认值与相关测试 → 再改引用文档。
+  - 欺骗技能篡改系数（×0.3/×1.5）是 `StratagemDefinition` 配置数据（DECP-01），新技能走配置而非硬编码；SKILL-13 标注的 5 个草案技能（反间/声东/断粮/伪传/坚壁）禁止实现（枚举上有 `[Obsolete]`）。
+- **情报边界（NET-02/SLICE-06，原型就分开）**：`IntelRecord` 只有接收方可见字段；真值与欺骗元数据在独立的 `AuthoritativeIntel`（单机=本地权威侧，未来=服务端）。任何认知查询只走 `IntelPool`，禁止代码直接读敌方真值。
+- **时钟纪律**：所有计时必须声明 `TimeLayer`（战略=旬/回合，战役=秒/实时）；战役逻辑一律吃 `BattleClock` 时间，暂停由时钟冻结承载，不读 Unity `Time.time` 做规则结算。
+- **C# 风格**：见 `.editorconfig`（Allman、PascalCase 公共成员、私有 `_camelCase`）；语言为现代 C#（nullable 开启方向、record 表达不可变数据）；禁止吞异常、禁止 `as any` 式强制（C# 中为禁止无依据 `!`/禁用警告压制）。
+- **AI 开发环境**：WSL 侧 dotnet 8 SDK 在 `~/.dotnet`（需 `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1`，已写入 `~/.bashrc`），C# LSP = csharp-ls 0.16，项目级配置在 `opencode.json`。Foundation 纯逻辑可不打开 Unity 直接用 `dotnet` 验证；Unity 编译/EditMode 测试在 Windows 侧用 Unity 编辑器 batchmode 跑（路径见 `.omo/` 下安装脚本，编辑器装于 `D:\Unity\Hub\Editor`）。
+- 当前 MVP 代码仅为**可编译骨架 + 公式实现 + 测试**，不含场景/Prefab/MonoBehaviour 接线；垂直切片迭代时再补表现层与数据资产（ScriptableObject）。
+
 ## 文档工作流
 
 - 设计文档放 `Docs/`，**一律使用中文文件名**并带版本号（如 `游戏设计文档_v1.0.md`、`情报与可信度系统详细规格_v1.0.md`）；路线图条目用 Markdown checkbox 跟踪（见 GDD §6）。
 - 当前从属文档：`基础兵种数值表_v0.2.md`（切片输入）、`首发12计技能列表_v1.1.md`（新增 5 计含反间计均为机制草案，火攻已定效果）。
-- 改动已实现的玩法/数值时，先改 `关键数值与规则真源表_v1.1.md`，再同步引用文档并升版本号；代码中的伪代码（C#）仅为示意，不代表最终实现。
+- 改动已实现的玩法/数值时，先改 `关键数值与规则真源表_v1.2.md`，再同步引用文档并升版本号；代码中的伪代码（C#）仅为示意，不代表最终实现。

@@ -1,6 +1,6 @@
 namespace ChinaBettle.Foundation.Trust;
 
-/// <summary>信念层信任桶全部可调参数（真源 TRUST-01~08）。默认值=v1.1 真源表。</summary>
+/// <summary>信念层信任桶全部可调参数（真源 TRUST-01~11）。默认值=v1.2 真源表。</summary>
 public sealed record TrustConfig(
     float InitialValue = 0.50f,
     float MinValue = 0.10f,
@@ -14,7 +14,9 @@ public sealed record TrustConfig(
     float TimeFactorStale = 0.5f,
     float HighlySuspiciousThreshold = 0.30f,
     float TrustedThreshold = 0.80f,
-    float DetectedValue = 0.20f)
+    float DetectedValue = 0.20f,
+    float ReflectionLossRatio = 0.30f,
+    float ReflectionPenaltyMultiplier = 0.50f)
 {
     public static TrustConfig Default { get; } = new();
 }
