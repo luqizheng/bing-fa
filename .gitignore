@@ -72,3 +72,11 @@ desktop.ini
 
 # ---- dotnet / C# LSP 本地验证临时工程 ----
 .tmp-dotnet/
+
+# ---- Unity 首启自动生成的 ProjectSettings（按「最小集」约定只放行 3 个）----
+# 这些文件由 Unity 首次打开工程时按默认生成，禁止手工改写（见 AGENTS.md）。
+# 后续如需自定义 Tag/Layer 等，经真源表审批后从下方单独放行并提交对应文件。
+/ProjectSettings/*
+!/ProjectSettings/ProjectVersion.txt
+!/ProjectSettings/ProjectSettings.asset
+!/ProjectSettings/EditorBuildSettings.asset

@@ -65,10 +65,14 @@
 
 ## Unity 工程脚手架（已落地，2026-09-10 增补）
 
-- **`.meta` 文件已纳入仓库**：所有 `Assets/` 下脚本、asmdef、文件夹均带 `.meta`，GUID = `md5(归一化相对路径)`，跨克隆方一致；脚本走 `MonoImporter`，asmdef 走 `AssemblyDefinitionImporter`，文件夹走 `DefaultImporter`。新增资产务必**一并提交对应 `.meta`**（防止不同克隆者生成不同 GUID 破坏资产引用）；生成器在 `.tmp-dotnet/gen_meta.py`（gitignored）。
+- **`.meta` 文件已纳入仓库**：所有 `Assets/` 下脚本、asmdef、文件夹均带 `.meta`；脚本走 `MonoImporter`，asmdef 走 `AssemblyDefinitionImporter`，文件夹走 `DefaultImporter`。新增资产务必**一并提交对应 `.meta`**（防止不同克隆者生成不同 GUID 破坏资产引用）。
+  - **文件**（.cs / .asmdef / 场景）的 GUID 走 `md5(归一化相对路径)` 约定（生成器 `.tmp-dotnet/gen_meta.py`，gitignored），**跨克隆一致**——这是资产引用不坏的关键。
+  - **目录**的 GUID 由 Unity 首次导入时**随机分配**，本仓库**不保证**跨克隆一致；目录 GUID 不被资产引用，故无影响。**目录 meta 必须放在 `X.parent/X.meta`**（不是 `X/X.meta`）。
+  - **历史坑（2026-09-11 已清理）**：旧版生成器误写成 `dirpath/meta_name`，往每个目录里再塞一份 `X/X.meta`，Unity 读不到便另生成了同级随机 GUID 的 meta，仓库里积下 27 个错位 meta + 27 个同名空目录（空目录 git 根本不跟踪，全新 clone 会得到 27 个无主 meta）。已删除，并把生成器改对。
+  - 自检：`.tmp-dotnet/check_meta.py` 校验「目录 meta 是否缺失 / 是否有孤儿 meta / 文件 GUID 是否符合 md5 约定 / 是否有同名空目录残渣」，全 0 才算健康。
 - **Editor 程序集 `ChinaBettle.Editor`**：`Assets/Editor/`，Editor-only 平台，引用 Foundation+Game，仅放 Editor 工具（菜单/校验/批处理），严禁放运行时逻辑。`ChinaBettleProjectSetup.cs` 是 `[InitializeOnLoad]` 入口，负责：启动日志（报告 Unity 版本与 `GameScope` 锚点常量）+ 首次入栈自动把 `Assets/Scenes/MainScene.unity` 挂到 `EditorBuildSettings` 索引 0。
 - **启动场景 `Assets/Scenes/MainScene.unity`**：Unity 6 文本 YAML 格式最小骨架（`OcclusionCullingSettings`+`RenderSettings`+`LightmapSettings`+`NavMeshSettings`，无 GameObject），作为垂直切片接入点；后续 GameObject / MonoBehaviour 接线都在该场景内追加，禁止另起同名场景。
-- **`ProjectSettings/`**：仅提交最小集——`ProjectVersion.txt`（钉 `6000.0.83f1`）+ `ProjectSettings.asset`（钉 companyName=`ChinaBettle`、productName=`战国·兵者诡道`，serializedVersion 28）+ `EditorBuildSettings.asset`（含 MainScene）。其余 `TagManager.asset` / `DynamicsManager.asset` / `QualitySettings.asset` 等仍由 Unity 首启按默认生成，**禁止手工改写**——后续如需自定义 Tag/Layer，**先**经真源表审批后由 Editor 工具批量写入并提交对应文件。
+- **`ProjectSettings/`**：仅提交最小集——`ProjectVersion.txt`（钉 `6000.0.83f1`）+ `ProjectSettings.asset`（钉 companyName=`ChinaBettle`、productName=`战国·兵者诡道`，serializedVersion 28）+ `EditorBuildSettings.asset`（含 MainScene）。其余 `TagManager.asset` / `DynamicsManager.asset` / `QualitySettings.asset` 等仍由 Unity 首启按默认生成，**禁止手工改写**，且已由 `.gitignore` 忽略（`ProjectSettings/` 只放行上述 3 个文件，避免每次开 Unity 都把工作区弄脏）——后续如需自定义 Tag/Layer，**先**经真源表审批后由 Editor 工具批量写入，**届时再从 `.gitignore` 单独放行并提交该文件**。
 - 当前 MVP 代码仅为**可编译骨架 + 公式实现 + 测试 + 工程脚手架**；不含场景内 GameObject / Prefab / MonoBehaviour 接线 / ScriptableObject 数据资产——这些归垂直切片迭代补，不属本批。
 
 ## 文档工作流
