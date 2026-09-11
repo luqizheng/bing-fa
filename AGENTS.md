@@ -43,13 +43,24 @@
   - `ChinaBettle.Foundation`：纯 C#、**零 UnityEngine 依赖**（`noEngineReferences: true`），承载全部核心规则公式——可信度、信任桶/门控、幕僚代理信号（TRUST-10/12）、结阵反骑与火区结算（COMBAT-17/SKILL-03）、克制环/伤害/士气、双层时钟、补给饥饿、技能数据定义、目标优先级、AI 欺骗参数。**权威端与未来服务端共用此层。**
   - `ChinaBettle.Time / Units / Intel / Stratagems / AI / Battle / Game`：依次向上，可用 UnityEngine；`Game` 为最顶层引导。
   - 改公式先改 Foundation 纯逻辑，在 `Assets/Tests/` 加/改 EditMode 测试锁定真源算例（已锁定：fresh75、aged68、§4.1 预养链路、桶 0.586/0.20、异质信源识破、痕迹 10 分钟不刷新、克制环、伤害保底、谋略点经济、反思负反馈 ×0.5、幕僚信号三档与性格偏移、结阵移速 ×0.8/反噬 6 点、火区 8 点/2 秒、AI 欺骗 0.7 倍率与 30 点/90s）。
+- **语言级别与 API 面（C# 9 / .NET Standard 2.1；2026-09-11 全量修复后定型）**：Unity 6 的脚本语言级别是 **C# 9**、API 面是 **.NET Standard 2.1**。下列写法在桌面 `dotnet`（默认 latest）能过、在 Unity 里必炸，**一律禁用**：
+  - `file-scoped namespace`（`namespace X;`，C# 10）→ 用块式 `namespace X { }`。
+  - `record struct`（C# 10）→ 手写 `readonly struct` + `IEquatable<T>` + `==/!=`（参照 `Scripts/Foundation/Map/MapPoint.cs`、`Scripts/Intel/IntelRecord.cs` 的 `IntelPayload`）。
+  - `required` 成员（C# 11）→ 用对象初始化器；代价是 `Nullable enable` 下会报 CS8618（已知权衡，勿用无依据 `!` 压制）。
+  - `Random.Shared`（.NET 6）→ 自持 `private static readonly Random`（见 `Scripts/Foundation/Trust/AdvisorSignal.cs`）。
+  - `Enumerable.MaxBy/MinBy`（.NET 6）→ `OrderByDescending(...).FirstOrDefault()`（见 `Scripts/Foundation/AI/GoalPriority.cs`）。
+  - `init` 访问器是 C# 9、**允许用**，但它依赖 `System.Runtime.CompilerServices.IsExternalInit`，而该类型不属于 .NET Standard 2.1。已由 `Scripts/Foundation/IsExternalInit.cs` **公开**声明一次（Foundation 被其余所有程序集引用，故一处足够；改回 `internal` 会让 Intel/AI/Battle/Game 全部 CS0518）。升到 C# 10+ 或 .NET 5+ 后必须删掉该文件，否则 CS0101。
+  - **命令行闸门**：`.tmp-dotnet/ChinaBettle.Cs9Check.csproj`（`netstandard2.1` + `LangVersion 9.0`，gitignored）编译 Foundation/Intel/Units/Stratagems/AI/Battle 纯逻辑源码，`dotnet build` 即可在不开 Unity 时拦住上述问题。**Game / Editor / Tests 三个程序集依赖 UnityEngine 或 Unity 定制 NUnit，闸门覆盖不到，只有 Unity batchmode 能验证。**
+  - Unity 的 NUnit 是定制版 3.5（`com.unity.ext.nunit` 2.0.5），**没有 `Assert.Multiple`**（官方 NuGet NUnit 有，所以命令行闸门察觉不到）——测试里不要用。
+  - 跑 EditMode 测试：`Unity.exe -batchmode -nographics -projectPath <根> -logFile <.tmp-dotnet/unity-tests.log> -runTests -testPlatform EditMode -testResults <.tmp-dotnet/editmode-results.xml>`。**不要加 `-quit`**——它会连测试一起跳过、且不产出 `results.xml`；只有「仅编译不跑测试」时才配 `-quit`。
+  - 排错顺序：先统计错误码分布（`grep -o "error CS[0-9]*" <log> | sort | uniq -c`）。**上层程序集的错误会被下层编译失败掩盖**——Foundation 一报错，Game/Editor/Tests 的错误就都不显示，必须逐层修到 0 才会暴露下一层，别把某一轮的报错数当成全部。
 - **数值纪律（与设计文档真源表同等强制）**：
   - 禁止在逻辑代码里写魔法数字。所有阈值/CD/倍率/权重经 `*Config` record（`CredibilityConfig`/`TrustConfig`/`CombatConfig`/`SupplyConfig`/`StrategyPointConfig`/`DeceptionDetectionConfig`）注入，默认值必须等于真源表并在注释标注真源 ID（INTEL-/TRUST-/COMBAT-/FOOD-/SKILL-/DECP-）。
   - 改数值顺序：先改《关键数值与规则真源表》→ 同步 Config 默认值与相关测试 → 再改引用文档。
   - 欺骗技能篡改系数（×0.3/×1.5）是 `StratagemDefinition` 配置数据（DECP-01），新技能走配置而非硬编码；SKILL-13 标注的 5 个草案技能（反间/声东/断粮/伪传/坚壁）禁止实现（枚举上有 `[Obsolete]`）。
 - **情报边界（NET-02/SLICE-06，原型就分开）**：`IntelRecord` 只有接收方可见字段；真值与欺骗元数据在独立的 `AuthoritativeIntel`（单机=本地权威侧，未来=服务端）。任何认知查询只走 `IntelPool`，禁止代码直接读敌方真值。
 - **时钟纪律**：所有计时必须声明 `TimeLayer`（战略=旬/回合，战役=秒/实时）；战役逻辑一律吃 `BattleClock` 时间，暂停由时钟冻结承载，不读 Unity `Time.time` 做规则结算。
-- **C# 风格**：见 `.editorconfig`（Allman、PascalCase 公共成员、私有 `_camelCase`）；语言为现代 C#（nullable 开启方向、record 表达不可变数据）；禁止吞异常、禁止 `as any` 式强制（C# 中为禁止无依据 `!`/禁用警告压制）。
+- **C# 风格**：见 `.editorconfig`（Allman、PascalCase 公共成员、私有 `_camelCase`）；语言级别固定为 **C# 9**（见上「语言级别与 API 面」，务必先读再写代码）、`init`+`record`（class）表达不可变数据；nullable 目前仅有注解、**Unity 侧未开启 `#nullable` 上下文**（会报 CS8632 提示，非错误）；禁止吞异常、禁止 `as any` 式强制（C# 中为禁止无依据 `!`/禁用警告压制）。
 - **AI 开发环境**：WSL 侧 dotnet 8 SDK 在 `~/.dotnet`（需 `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1`，已写入 `~/.bashrc`），C# LSP = csharp-ls 0.16，项目级配置在 `opencode.json`。Foundation 纯逻辑可不打开 Unity 直接用 `dotnet` 验证；Unity 编译/EditMode 测试在 Windows 侧用 Unity 编辑器 batchmode 跑（路径见 `.omo/` 下安装脚本，编辑器装于 `D:\Unity\Hub\Editor`）。
 
 ## Unity 工程脚手架（已落地，2026-09-10 增补）
@@ -57,7 +68,7 @@
 - **`.meta` 文件已纳入仓库**：所有 `Assets/` 下脚本、asmdef、文件夹均带 `.meta`，GUID = `md5(归一化相对路径)`，跨克隆方一致；脚本走 `MonoImporter`，asmdef 走 `AssemblyDefinitionImporter`，文件夹走 `DefaultImporter`。新增资产务必**一并提交对应 `.meta`**（防止不同克隆者生成不同 GUID 破坏资产引用）；生成器在 `.tmp-dotnet/gen_meta.py`（gitignored）。
 - **Editor 程序集 `ChinaBettle.Editor`**：`Assets/Editor/`，Editor-only 平台，引用 Foundation+Game，仅放 Editor 工具（菜单/校验/批处理），严禁放运行时逻辑。`ChinaBettleProjectSetup.cs` 是 `[InitializeOnLoad]` 入口，负责：启动日志（报告 Unity 版本与 `GameScope` 锚点常量）+ 首次入栈自动把 `Assets/Scenes/MainScene.unity` 挂到 `EditorBuildSettings` 索引 0。
 - **启动场景 `Assets/Scenes/MainScene.unity`**：Unity 6 文本 YAML 格式最小骨架（`OcclusionCullingSettings`+`RenderSettings`+`LightmapSettings`+`NavMeshSettings`，无 GameObject），作为垂直切片接入点；后续 GameObject / MonoBehaviour 接线都在该场景内追加，禁止另起同名场景。
-- **`ProjectSettings/`**：仅提交最小集——`ProjectVersion.txt`（钉 `6000.0.83f1`）+ `ProjectSettings.asset`（钉 companyName=`ChinaBettle`、productName=`战国·兵者诡道`，serializedVersion 26）+ `EditorBuildSettings.asset`（含 MainScene）。其余 `TagManager.asset` / `DynamicsManager.asset` / `QualitySettings.asset` 等仍由 Unity 首启按默认生成，**禁止手工改写**——后续如需自定义 Tag/Layer，**先**经真源表审批后由 Editor 工具批量写入并提交对应文件。
+- **`ProjectSettings/`**：仅提交最小集——`ProjectVersion.txt`（钉 `6000.0.83f1`）+ `ProjectSettings.asset`（钉 companyName=`ChinaBettle`、productName=`战国·兵者诡道`，serializedVersion 28）+ `EditorBuildSettings.asset`（含 MainScene）。其余 `TagManager.asset` / `DynamicsManager.asset` / `QualitySettings.asset` 等仍由 Unity 首启按默认生成，**禁止手工改写**——后续如需自定义 Tag/Layer，**先**经真源表审批后由 Editor 工具批量写入并提交对应文件。
 - 当前 MVP 代码仅为**可编译骨架 + 公式实现 + 测试 + 工程脚手架**；不含场景内 GameObject / Prefab / MonoBehaviour 接线 / ScriptableObject 数据资产——这些归垂直切片迭代补，不属本批。
 
 ## 文档工作流
