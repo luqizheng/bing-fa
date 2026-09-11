@@ -7,6 +7,7 @@
         "ChinaBettle.Stratagems",
         "ChinaBettle.AI",
         "ChinaBettle.Units",
+        "ChinaBettle.Battle",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
     ],
