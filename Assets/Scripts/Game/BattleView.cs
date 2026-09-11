@@ -292,9 +292,15 @@ namespace ChinaBettle.Game
             return go.transform;
         }
 
-        private static readonly Dictionary<int, Material> MaterialCache = new();
+        /// <summary>
+        /// 每个渲染器独占并复用一份材质实例。
+        /// 血条/士气条/焚毁状态的<b>颜色每帧都在变</b>，若每次改色都 <c>new Material</c> 会持续泄漏
+        /// （18 单位 × 2 条 × 60fps ≈ 2160 份/秒），且 <see cref="Shader.Find(string)"/> 是字符串查找，
+        /// 每帧调用代价很高。这里只在首次接触某渲染器时创建一次，之后只改 <c>color</c>。
+        /// </summary>
+        private readonly Dictionary<Renderer, Material> perRendererMaterials = new();
 
-        private static void SetColor(GameObject go, Color color, bool transparent = false)
+        private void SetColor(GameObject go, Color color, bool transparent = false)
         {
             var renderer = go.GetComponent<Renderer>();
             if (renderer is null)
@@ -302,23 +308,20 @@ namespace ChinaBettle.Game
                 return;
             }
 
-            int key = transparent ? 1 : 0;
-            if (!MaterialCache.TryGetValue(key, out var baseMaterial))
+            if (!perRendererMaterials.TryGetValue(renderer, out var material) || material == null)
             {
                 var shader = transparent
                     ? Shader.Find("Sprites/Default") ?? Shader.Find("Unlit/Transparent") ?? Shader.Find("Standard")
                     : Shader.Find("Unlit/Color") ?? Shader.Find("Sprites/Default") ?? Shader.Find("Standard");
-                baseMaterial = new Material(shader);
-                MaterialCache[key] = baseMaterial;
+                material = new Material(shader);
+                perRendererMaterials[renderer] = material;
+                renderer.sharedMaterial = material;
             }
 
-            var material = new Material(baseMaterial);
             if (material.HasProperty("_Color"))
             {
                 material.color = color;
             }
-
-            renderer.sharedMaterial = material;
         }
     }
 
