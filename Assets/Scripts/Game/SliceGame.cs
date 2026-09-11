@@ -501,7 +501,7 @@ namespace ChinaBettle.Game
             camera.nearClipPlane = 0.3f;
             camera.farClipPlane = 800f;
             camera.clearFlags = CameraClearFlags.SolidColor;
-            camera.backgroundColor = new Color(0.06f, 0.07f, 0.09f);
+            camera.backgroundColor = SlicePalette.CameraBackground;
             camera.transform.position = new Vector3(0f, 150f, -80f);
             camera.transform.rotation = Quaternion.Euler(58f, 0f, 0f);
         }
