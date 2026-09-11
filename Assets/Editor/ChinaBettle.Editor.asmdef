@@ -1,0 +1,19 @@
+{
+    "name": "ChinaBettle.Editor",
+    "rootNamespace": "ChinaBettle.Editor",
+    "references": [
+        "ChinaBettle.Foundation",
+        "ChinaBettle.Game"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

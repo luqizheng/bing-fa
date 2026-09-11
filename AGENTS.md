@@ -40,9 +40,9 @@
 
 - **工程结构**：Unity 6 LTS 工程即仓库根（`ProjectSettings/ProjectVersion.txt` 钉 `6000.0.83f1`，changeset `dacc44548933`）。代码在 `Assets/Scripts/`，测试在 `Assets/Tests/`（EditMode/NUnit）。Library/Temp 等生成物已忽略，二进制资源走 Git LFS（见 `.gitattributes`）。
 - **asmdef 分层（依赖只能向下，禁止反向/环）**：
-  - `ChinaBettle.Foundation`：纯 C#、**零 UnityEngine 依赖**（`noEngineReferences: true`），承载全部核心规则公式——可信度、信任桶/门控、克制环/伤害/士气、双层时钟、补给饥饿、技能数据定义、目标优先级。**权威端与未来服务端共用此层。**
+  - `ChinaBettle.Foundation`：纯 C#、**零 UnityEngine 依赖**（`noEngineReferences: true`），承载全部核心规则公式——可信度、信任桶/门控、幕僚代理信号（TRUST-10/12）、结阵反骑与火区结算（COMBAT-17/SKILL-03）、克制环/伤害/士气、双层时钟、补给饥饿、技能数据定义、目标优先级、AI 欺骗参数。**权威端与未来服务端共用此层。**
   - `ChinaBettle.Time / Units / Intel / Stratagems / AI / Battle / Game`：依次向上，可用 UnityEngine；`Game` 为最顶层引导。
-  - 改公式先改 Foundation 纯逻辑，在 `Assets/Tests/` 加/改 EditMode 测试锁定真源算例（已锁定：fresh75、aged68、§4.1 预养链路、桶 0.586/0.20、异质信源识破、痕迹 10 分钟不刷新、克制环、伤害保底、谋略点经济）。
+  - 改公式先改 Foundation 纯逻辑，在 `Assets/Tests/` 加/改 EditMode 测试锁定真源算例（已锁定：fresh75、aged68、§4.1 预养链路、桶 0.586/0.20、异质信源识破、痕迹 10 分钟不刷新、克制环、伤害保底、谋略点经济、反思负反馈 ×0.5、幕僚信号三档与性格偏移、结阵移速 ×0.8/反噬 6 点、火区 8 点/2 秒、AI 欺骗 0.7 倍率与 30 点/90s）。
 - **数值纪律（与设计文档真源表同等强制）**：
   - 禁止在逻辑代码里写魔法数字。所有阈值/CD/倍率/权重经 `*Config` record（`CredibilityConfig`/`TrustConfig`/`CombatConfig`/`SupplyConfig`/`StrategyPointConfig`/`DeceptionDetectionConfig`）注入，默认值必须等于真源表并在注释标注真源 ID（INTEL-/TRUST-/COMBAT-/FOOD-/SKILL-/DECP-）。
   - 改数值顺序：先改《关键数值与规则真源表》→ 同步 Config 默认值与相关测试 → 再改引用文档。
@@ -51,7 +51,14 @@
 - **时钟纪律**：所有计时必须声明 `TimeLayer`（战略=旬/回合，战役=秒/实时）；战役逻辑一律吃 `BattleClock` 时间，暂停由时钟冻结承载，不读 Unity `Time.time` 做规则结算。
 - **C# 风格**：见 `.editorconfig`（Allman、PascalCase 公共成员、私有 `_camelCase`）；语言为现代 C#（nullable 开启方向、record 表达不可变数据）；禁止吞异常、禁止 `as any` 式强制（C# 中为禁止无依据 `!`/禁用警告压制）。
 - **AI 开发环境**：WSL 侧 dotnet 8 SDK 在 `~/.dotnet`（需 `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1`，已写入 `~/.bashrc`），C# LSP = csharp-ls 0.16，项目级配置在 `opencode.json`。Foundation 纯逻辑可不打开 Unity 直接用 `dotnet` 验证；Unity 编译/EditMode 测试在 Windows 侧用 Unity 编辑器 batchmode 跑（路径见 `.omo/` 下安装脚本，编辑器装于 `D:\Unity\Hub\Editor`）。
-- 当前 MVP 代码仅为**可编译骨架 + 公式实现 + 测试**，不含场景/Prefab/MonoBehaviour 接线；垂直切片迭代时再补表现层与数据资产（ScriptableObject）。
+
+## Unity 工程脚手架（已落地，2026-09-10 增补）
+
+- **`.meta` 文件已纳入仓库**：所有 `Assets/` 下脚本、asmdef、文件夹均带 `.meta`，GUID = `md5(归一化相对路径)`，跨克隆方一致；脚本走 `MonoImporter`，asmdef 走 `AssemblyDefinitionImporter`，文件夹走 `DefaultImporter`。新增资产务必**一并提交对应 `.meta`**（防止不同克隆者生成不同 GUID 破坏资产引用）；生成器在 `.tmp-dotnet/gen_meta.py`（gitignored）。
+- **Editor 程序集 `ChinaBettle.Editor`**：`Assets/Editor/`，Editor-only 平台，引用 Foundation+Game，仅放 Editor 工具（菜单/校验/批处理），严禁放运行时逻辑。`ChinaBettleProjectSetup.cs` 是 `[InitializeOnLoad]` 入口，负责：启动日志（报告 Unity 版本与 `GameScope` 锚点常量）+ 首次入栈自动把 `Assets/Scenes/MainScene.unity` 挂到 `EditorBuildSettings` 索引 0。
+- **启动场景 `Assets/Scenes/MainScene.unity`**：Unity 6 文本 YAML 格式最小骨架（`OcclusionCullingSettings`+`RenderSettings`+`LightmapSettings`+`NavMeshSettings`，无 GameObject），作为垂直切片接入点；后续 GameObject / MonoBehaviour 接线都在该场景内追加，禁止另起同名场景。
+- **`ProjectSettings/`**：仅提交最小集——`ProjectVersion.txt`（钉 `6000.0.83f1`）+ `ProjectSettings.asset`（钉 companyName=`ChinaBettle`、productName=`战国·兵者诡道`，serializedVersion 26）+ `EditorBuildSettings.asset`（含 MainScene）。其余 `TagManager.asset` / `DynamicsManager.asset` / `QualitySettings.asset` 等仍由 Unity 首启按默认生成，**禁止手工改写**——后续如需自定义 Tag/Layer，**先**经真源表审批后由 Editor 工具批量写入并提交对应文件。
+- 当前 MVP 代码仅为**可编译骨架 + 公式实现 + 测试 + 工程脚手架**；不含场景内 GameObject / Prefab / MonoBehaviour 接线 / ScriptableObject 数据资产——这些归垂直切片迭代补，不属本批。
 
 ## 文档工作流
 

@@ -45,7 +45,10 @@ public sealed class ReduceStoveChainTests
     {
         var cc = CredibilityConfig.Default;
         var trust = new TrustBucketSystem();
-        // 冷桶 0.50 + 单种来源 + 陈旧 time=0.5：0.50 + 0.5×0.6×0.5×0.3 = 0.545
+        // 先用 50% 情报做一次零增量更新（signed=0，桶仍 0.50），把"最近更新时刻"拨到 60s；
+        // 否则全新桶首次更新按近期因子 1.0（情报规格 §4.1），吃不到陈旧因子 0.5。
+        trust.Update(Topic, 50f, TrustBucketSystem.IndependenceFactor(1), 60f);
+        // 冷桶 0.50 + 单种来源 + 距上次 10 分钟（陈旧 time=0.5）：0.50 + 0.5×0.6×0.5×0.3 = 0.545
         float cold = trust.Update(Topic, 75f, TrustBucketSystem.IndependenceFactor(1), 660f);
         Assert.That(cold, Is.EqualTo(0.545f).Within(0.005f));
 
