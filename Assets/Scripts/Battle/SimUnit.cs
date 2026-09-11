@@ -88,6 +88,10 @@ namespace ChinaBettle.Battle
         public void RegisterKill() => Kills++;
 
         /// <summary>FOOD-04：粮尽后每 60 秒 +10%；到 100% 视为饿散（由仿真层移出）。</summary>
+        /// <summary>FOOD-06：补给恢复后饥饿度回落（不清零）。</summary>
+        public void RecoverStarvation(float amount) =>
+            Starvation = System.Math.Clamp(Starvation - amount, 0f, 1f);
+
         public void ApplyStarvationTick(float gain) =>
             Starvation = System.Math.Clamp(Starvation + gain, 0f, 1f);
 

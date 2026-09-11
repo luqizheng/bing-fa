@@ -37,17 +37,27 @@ namespace ChinaBettle.Battle
         private readonly BattleStats stats = new();
         private readonly CounterRing counterRing;
 
+        private readonly CampaignRunner campaign = new();
+
         private float observationAccumulator;
         private float supplyAccumulator;
         private float aiThinkAccumulator;
         private float aiFreezeUntilSeconds = -1f;
         private int intelSequence;
         private float lastPayloadAiSaw = -1f;
+        private AiPosture aiPosture = AiPosture.Hold;
+        private bool zhaoSortedOut;
+        private float supplyPathAccumulator;
+        private bool zhaoPathOpen = true;
+        private float siegeSeconds;
+        private bool siegeAnnounced;
+        private bool siegeAmplified;
+        private int initialZhaoCombatUnits;
 
-        public BattleSimulation(BattleRules? rules = null, bool autoPlayAi = true)
+        public BattleSimulation(BattleRules? rules = null, bool autoPlayAi = true, BattleMapDefinition? map = null)
         {
             Rules = rules ?? new BattleRules();
-            Map = new SliceMap();
+            Map = map ?? SliceMaps.Default;
             Clock = new BattleClock();
             counterRing = new CounterRing(Rules.Combat);
             AiBrain = new AiBrain(this);
@@ -55,13 +65,22 @@ namespace ChinaBettle.Battle
 
             DeployInitialForces();
 
+            // 剧本基线（CP-06③ 出垒比例的分母）与开局幕。
+            initialZhaoCombatUnits = System.Math.Max(1, units.Count(u => u.Faction == Faction.Zhao && !u.IsScout));
+
+            // 开局推进第 ① 幕；**必须消费事件**，否则幕进入文案不会进编年史（复盘缺幕）。
+            foreach (var e in campaign.Step(BuildCampaignContext(0f)).Events)
+            {
+                ApplyCampaignEvent(e);
+            }
+
             Log(ChronicleKind.Outcome,
-                "战役开始：赵军自滏口陉南出，秦军据野王—高都。单局上限 20 战场分钟（TIME-04）。");
+                $"战役开始：{Map.DisplayName}。单局上限 20 战场分钟（TIME-04）。");
         }
 
         public BattleRules Rules { get; }
 
-        public SliceMap Map { get; }
+        public BattleMapDefinition Map { get; }
 
         public BattleClock Clock { get; }
 
@@ -93,6 +112,21 @@ namespace ChinaBettle.Battle
         /// <summary>AI 对玩家的信任桶（TRUST-01：AI 内部状态，玩家不可见，只经幕僚代理信号间接感知）。</summary>
         public TrustBucketSystem AiTrust { get; } = new();
 
+        /// <summary>玩家（赵）对秦军的信任桶。玩家侧不使用信任桶做决策，此处仅供剧本与复盘呈现（TRUST-10 不暴露数值）。</summary>
+        public TrustBucketSystem PlayerTrust { get; } = new();
+
+        /// <summary>长平剧本运行器（CP-01…08）：幕状态、幕历史与结局。</summary>
+        public CampaignRunner Campaign => campaign;
+
+        /// <summary>当前幕（HUD 显示）。</summary>
+        public CampaignAct CurrentAct => campaign.Current;
+
+        /// <summary>当前幕标题。</summary>
+        public string CurrentActTitle => campaign.CurrentTitle;
+
+        /// <summary>秦军当前态势（由剧本幕驱动，供 AI 态势决策消费）。</summary>
+        public AiPosture AiPosture => aiPosture;
+
         /// <summary>权威端欺骗元数据（单机=本地权威侧，未来=服务端；接收方查询拿不到，NET-02）。</summary>
         public List<AuthoritativeIntel> AuthoritativeRecords { get; } = new();
 
@@ -113,30 +147,16 @@ namespace ChinaBettle.Battle
 
         private void DeployInitialForces()
         {
-            // 赵（玩家）：胡服骑射 ×2（含主将）、枪兵 ×3（结阵默认开）、弩兵 ×2、斥候 ×2
-            Add(Faction.Zhao, SliceUnitCatalog.ZhaoHuFu, new MapPoint(-16f, -140f), "赵骑1(主将)");
-            Add(Faction.Zhao, SliceUnitCatalog.ZhaoHuFu, new MapPoint(16f, -140f), "赵骑2");
-            Add(Faction.Zhao, SliceUnitCatalog.Spear, new MapPoint(-30f, -150f), "赵枪1");
-            Add(Faction.Zhao, SliceUnitCatalog.Spear, new MapPoint(0f, -152f), "赵枪2");
-            Add(Faction.Zhao, SliceUnitCatalog.Spear, new MapPoint(30f, -150f), "赵枪3");
-            Add(Faction.Zhao, SliceUnitCatalog.Crossbow, new MapPoint(-12f, -158f), "赵弩1");
-            Add(Faction.Zhao, SliceUnitCatalog.Crossbow, new MapPoint(12f, -158f), "赵弩2");
-            Add(Faction.Zhao, SliceUnitCatalog.Scout, new MapPoint(-40f, -128f), "赵斥候1");
-            Add(Faction.Zhao, SliceUnitCatalog.Scout, new MapPoint(40f, -128f), "赵斥候2");
-
-            // 秦（AI）：锐士 ×2（含主将）、枪兵 ×2、轻骑 ×2、弩兵 ×1、斥候 ×1
-            Add(Faction.Qin, SliceUnitCatalog.QinRuiShi, new MapPoint(-18f, 100f), "秦锐士1(主将)");
-            Add(Faction.Qin, SliceUnitCatalog.QinRuiShi, new MapPoint(18f, 100f), "秦锐士2");
-            Add(Faction.Qin, SliceUnitCatalog.Spear, new MapPoint(-36f, 92f), "秦枪1");
-            Add(Faction.Qin, SliceUnitCatalog.Spear, new MapPoint(36f, 92f), "秦枪2");
-            Add(Faction.Qin, SliceUnitCatalog.LightCavalry, new MapPoint(-52f, 108f), "秦骑1");
-            Add(Faction.Qin, SliceUnitCatalog.LightCavalry, new MapPoint(52f, 108f), "秦骑2");
-            Add(Faction.Qin, SliceUnitCatalog.Crossbow, new MapPoint(0f, 84f), "秦弩1");
-            Add(Faction.Qin, SliceUnitCatalog.Scout, new MapPoint(0f, 70f), "秦斥候1");
+            // 部署数据来自地图定义（真源 CP-05；滏口陉图等价于原硬编码部署）。
+            foreach (var deployment in Map.Deployments)
+            {
+                Add(deployment.Definition, Map.ClampToBounds(deployment.Position), deployment.Label);
+            }
         }
 
-        private void Add(Faction faction, UnitDefinition definition, MapPoint position, string label)
+        private void Add(UnitDefinition definition, MapPoint position, string label)
         {
+            var faction = label.StartsWith("赵") ? Faction.Zhao : Faction.Qin;
             var unit = new SimUnit($"{faction}_{units.Count:D2}", faction, definition, position, Rules)
             {
                 DisplayLabel = label,
@@ -187,7 +207,225 @@ namespace ChinaBettle.Battle
                 }
             }
 
+            // 顺序契约：**先战术结算，后剧本结算**。
+            // 歼灭/焚粮是可观测的战术事实（GDD §2.7.1 前三条），优先于剧本的态势性结局（CP-08）；
+            // 反之会让"全歼秦军"被改写成"秦军退却"，结算原因失真。
             EvaluateOutcome();
+            TickCampaign(now);
+        }
+
+        // ───────────────────────────── 剧本（CP-01…08）─────────────────────────────
+
+        /// <summary>
+        /// 推进长平剧本：组装只读快照 → 运行器 Step → 执行事件流。
+        /// 契约：剧本**不直接改战场**，一切效果经本方法落到仿真（见 <see cref="CampaignEvent"/>）。
+        /// </summary>
+        private void TickCampaign(float now)
+        {
+            if (IsFinished)
+            {
+                return;
+            }
+
+            var result = campaign.Step(BuildCampaignContext(now));
+
+            foreach (var e in result.Events)
+            {
+                ApplyCampaignEvent(e);
+            }
+        }
+
+        /// <summary>组装剧本所需的只读快照（不含任何真值字段，NET-02）。</summary>
+        private CampaignContext BuildCampaignContext(float now)
+        {
+            var zhaoCombat = units.Where(u => u.Alive && u.Faction == Faction.Zhao && !u.IsScout).ToList();
+            var qinCombat = units.Where(u => u.Alive && u.Faction == Faction.Qin && !u.IsScout).ToList();
+
+            // 出垒判定（CP-06③）：壁垒线所属方（赵）位于【己方一侧以外】的单位即已出垒。
+            int beyondWall = 0;
+            var wall = Map.Fortifications.FirstOrDefault();
+            if (wall is not null)
+            {
+                // 赵军在北、壁垒朝南：赵军越过壁垒线（X 向）即已出垒。
+                beyondWall = zhaoCombat.Count(u => u.Position.X > wall.FixedX + BattleMapDefinition.FortificationThickness * 0.5f);
+            }
+            else
+            {
+                // 无壁垒的图（教学序章）以"离开本阵 60m 以上"近似表达出垒。
+                beyondWall = zhaoCombat.Count(u => u.Position.DistanceTo(Map.BaseOf(Faction.Zhao)) > 60f);
+            }
+
+            bool qinHoldsFord = Map.Volumes
+                .Where(v => v.Terrain == Foundation.Map.TerrainClass.Passable)
+                .Where(v => Map.Volumes.Any(big => big.Terrain == Foundation.Map.TerrainClass.Impassable &&
+                                                   System.MathF.Abs(v.Center.X - big.Center.X) <= big.Width * 0.5f &&
+                                                   System.MathF.Abs(v.Center.Z - big.Center.Z) <= big.Depth * 0.5f))
+                .Any(ford => qinCombat.Any(u => u.Position.DistanceTo(ford.Center) <= 30f));
+
+            bool corridorCut = qinCombat.Count(u => Map.AreaIdAt(u.Position) == "crossing") >= 2;
+
+            return new CampaignContext
+            {
+                ElapsedSeconds = now,
+                TimeLimitSeconds = Rules.TimeLimitSeconds,
+                ZhaoUnits = zhaoCombat.Count,
+                QinUnits = qinCombat.Count,
+                ZhaoInitialUnits = initialZhaoCombatUnits,
+                ZhaoUnitsBeyondWall = beyondWall,
+                QinHoldsFord = qinHoldsFord,
+                QinCutSupplyCorridor = corridorCut && campaign.Current >= CampaignAct.Encirclement,
+                ZhaoGranaryLost = Map.GranariesOf(Faction.Zhao).All(g => g.IsBurned),
+                ZhaoCampLost = false,
+                AiTrustOnZhao = AiTrust.Get(AiTopic),
+                PlayerTrustOnQin = PlayerTrust.Get(PlayerTopic),
+                ZhaoBrokeOut = DetermineBreakout(now),
+                ZhaoSortedOut = zhaoSortedOut,
+            };
+        }
+
+        /// <summary>执行剧本事件（唯一的效果落地点）。</summary>
+        private void ApplyCampaignEvent(CampaignEvent e)
+        {
+            switch (e)
+            {
+                case CampaignActEntered entered:
+                    Log(ChronicleKind.Campaign, $"{entered.Title}｜{entered.OpeningText}");
+                    break;
+
+                case NarrativeIntelInject inject:
+                    InjectNarrativeIntel(inject);
+                    break;
+
+                case SortieOrder sortie:
+                    zhaoSortedOut = true;
+                    OrderZhaoSortie();
+                    Log(ChronicleKind.Campaign, sortie.Text);
+                    break;
+
+                case OffensiveOrder offensive:
+                    aiPosture = AiPosture.Offensive;
+                    Log(ChronicleKind.Campaign, offensive.Text);
+                    break;
+
+                case HoldOrder hold:
+                    // 围困期的"转入封锁"＝**持续合围**，不是撤围回守势线。
+                    // 若此处退回 Hold，合围态势当帧即被撤销（CP-06 的本意是就地封锁、绝其粮道）。
+                    aiPosture = aiPosture == AiPosture.Encircle ? AiPosture.Encircle : AiPosture.Hold;
+                    Log(ChronicleKind.Campaign, hold.Text);
+                    break;
+
+                case EncircleOrder encircle:
+                    aiPosture = AiPosture.Encircle;
+                    Log(ChronicleKind.Campaign, encircle.Text);
+                    break;
+
+                case CampaignEnd end:
+                    Log(ChronicleKind.Campaign, end.Text);
+                    Finish(end.PlayerWins ? BattleOutcome.ZhaoVictory : BattleOutcome.QinVictory,
+                        $"{end.EndingId}（CP-08）");
+                    break;
+
+                default:
+                    Log(ChronicleKind.Campaign, e.Text);
+                    break;
+            }
+        }
+
+        /// <summary>
+        /// 执行赵军出垒（CP-02 ④）：赵括代廉颇后主动出击，**追击佯退的秦军**——
+        /// 注意不是直撞秦军守势线（那是送死，且不合史实："秦军佯败而走，赵军悉众追之"）。
+        ///
+        /// 落点：丹水渡口以北的追击展开区（赵军出垒、渡河、追击，随即被合围）。
+        /// 队伍保持梯次：弩兵在后、骑兵两翼、步兵居中——出垒后阵形不如壁垒内稳固，这是 CP-06 的伏笔。
+        /// </summary>
+        private void OrderZhaoSortie()
+        {
+            // 追击目标＝丹水渡口（秦军佯退方向），而非秦军守势线。
+            var ford = Map.Volumes
+                .Where(v => v.Terrain == Foundation.Map.TerrainClass.Passable)
+                .Where(v => Map.Volumes.Any(big => big.Terrain == Foundation.Map.TerrainClass.Impassable &&
+                                                   System.MathF.Abs(v.Center.X - big.Center.X) <= big.Width * 0.5f &&
+                                                   System.MathF.Abs(v.Center.Z - big.Center.Z) <= big.Depth * 0.5f))
+                .OrderBy(v => v.Width * v.Depth)
+                .FirstOrDefault();
+
+            MapPoint axis = ford?.Center ?? Map.AiHoldLine;
+
+            // 落点纪律：**停在丹水北岸**，不越过渡口。
+            // 史实中赵军是被"佯退"逐步引过河的；剧本只负责下令出垒（脱离壁垒），
+            // 越河追击的过程应由战场态势自然发生。若一次性把目标设到秦军守势线附近，
+            // 赵军会径直撞进敌阵——第 ④ 幕就崩，后面的合围/断粮幕无从谈起。
+            float northBank = axis.Z - 60f;
+
+            var zhaoCombat = units.Where(u => u.Alive && u.Faction == Faction.Zhao && !u.IsScout).ToList();
+            for (int i = 0; i < zhaoCombat.Count; i++)
+            {
+                var unit = zhaoCombat[i];
+                float standoff = unit.Definition.HasRangedAttack ? -30f : (unit.IsCavalry ? -10f : 0f);
+
+                unit.MoveGoal = Map.ClampToBounds(new MapPoint(
+                    axis.X + (i - zhaoCombat.Count / 2f) * 12f,
+                    northBank + standoff));
+            }
+        }
+
+        /// <summary>
+        /// 剧本叙事载荷注入：进入接收方情报池，按正常可信度公式与权重参与综合计算（情报规格 §3）。
+        /// **不是欺骗技能产出**——不走 DECP-01 篡改系数、不生成痕迹、不可识破（真源 SKILL-13）。
+        /// </summary>
+        private void InjectNarrativeIntel(NarrativeIntelInject inject)
+        {
+            float baseCredibility = inject.SourceKind switch
+            {
+                Foundation.Intel.IntelSourceType.CapturedDocument => Rules.Credibility.CapturedDocumentBase,
+                Foundation.Intel.IntelSourceType.Prisoner => Rules.Credibility.PrisonerBase,
+                Foundation.Intel.IntelSourceType.SkillReveal => Rules.Credibility.SkillRevealBase,
+                Foundation.Intel.IntelSourceType.PatternInference => Rules.Credibility.PatternBaseMax,
+                _ => Rules.Credibility.ScoutVisualBase,
+            };
+
+            float fresh = CredibilityCalculator.Fresh(Rules.Credibility, inject.SourceKind, 0, 0f);
+            var record = new IntelRecord
+            {
+                IntelId = $"INTEL_NARRATIVE_{++intelSequence:D4}",
+                Topic = inject.Topic,
+                SourceType = inject.SourceKind,
+                BaseCredibility = baseCredibility,
+                RawContent = new IntelPayload(IntelPayloadType.TroopCountEstimate, inject.Value),
+                ScoutCount = 0,
+                ObservationMinutes = 0f,
+                CreatedAtSeconds = Clock.ElapsedSeconds,
+            };
+            record.Initialize(fresh);
+
+            var recipientPool = inject.Recipient == Faction.Zhao ? PlayerIntel : AiIntel;
+            recipientPool.Add(record);
+
+            Log(ChronicleKind.Intel,
+                $"{FactionName(inject.Recipient)}军收到（{inject.SourceKind}）：{inject.Topic} 载荷 {inject.Value:0} 人" +
+                $"（可信度 {fresh:0}%，叙事事件非伪造载荷）");
+        }
+
+        /// <summary>突围判定（CP-08②）：进入突围幕后，赵军主力成建制脱离合围——以"渡过丹水且存活"表达。</summary>
+        private bool DetermineBreakout(float now)
+        {
+            if (campaign.Current != CampaignAct.Breakout)
+            {
+                return false;
+            }
+
+            // 丹水以南（Z 大于河道带）的存活赵军战斗单位 ≥ 2 队即视为突围成功。
+            var river = Map.Volumes
+                .Where(v => v.Terrain == Foundation.Map.TerrainClass.Impassable && v.Width > v.Depth)
+                .OrderByDescending(v => v.Width * v.Depth)
+                .FirstOrDefault();
+            if (river is null)
+            {
+                return false;
+            }
+
+            float southEdge = river.Center.Z + river.Depth * 0.5f;
+            return units.Count(u => u.Alive && u.Faction == Faction.Zhao && !u.IsScout && u.Position.Z > southEdge) >= 2;
         }
 
         // ───────────────────────────── 接战 ─────────────────────────────
@@ -222,12 +460,15 @@ namespace ChinaBettle.Battle
                     : attacker.Definition.AttackIntervalSeconds;
 
                 float coefficient = counterRing.Coefficient(attacker.Definition.Class, target.Definition.Class);
+                // COMBAT-18③：守方位于己方壁垒缺口段时防御力 ×(1+加成)；攻方不享受。
+                float defense = target.Definition.Defense *
+                                (1f + Map.DefenderDefenseBonusAt(target.Position, target.Faction));
                 int damage = DamageFormula.Resolve(
                     panelAttack: ranged ? attacker.Definition.RangedAttack : attacker.PanelAttack(Rules),
-                    defense: target.Definition.Defense,
+                    defense: defense,
                     counterCoefficient: coefficient,
                     morale: attacker.MoraleState,
-                    terrainCoefficient: 1f, // 地形对防御/射程的修正待 v0.3（兵种表 §5）
+                    terrainCoefficient: 1f, // 地形对射程的修正仍待兵种表 v0.4（COMBAT-16/18 已含减速与壁垒防御）
                     config: Rules.Combat);
 
                 if (damage <= 0)
@@ -291,6 +532,16 @@ namespace ChinaBettle.Battle
 
             // 斥候不主动接战（侦查专用）。
             if (attacker.IsScout)
+            {
+                return null;
+            }
+
+            // 剧本守势幕（CP-02 ①②）：**禁止自动接战**，仅在遭到攻击时反击（AttackTargetId 分支已处理）。
+            // 设计依据：这两幕是"侦查 + 桶预养期"（TRUST-09），若弩兵按射程自动开火，
+            // 两军会隔着丹水互射、斥候被瞬间清掉，情报循环（SLICE-03①）与七幕节拍同时失效。
+            // 史实上这一阶段正是"秦数挑战，赵兵不出"——双方本就不交战。
+            // 对**双方**生效：守势幕是"两军相持不战"（史实："秦数挑战，赵兵不出"）。
+            if (CurrentAct <= CampaignAct.Challenge)
             {
                 return null;
             }
@@ -373,7 +624,8 @@ namespace ChinaBettle.Battle
                 float speed = unit.CurrentMoveSpeed(Rules, terrain);
                 float travel = speed * step;
                 float before = unit.Position.DistanceTo(goal.Value);
-                unit.Position = Map.Clamp(unit.Position.MoveTowards(goal.Value, travel));
+                // 边界与不可通行夹取（COMBAT-05/18）：不可进入绝壁、河道与壁垒非缺口段。
+                unit.Position = Map.Clamp(unit.Position, unit.Position.MoveTowards(goal.Value, travel));
 
                 if (unit.IsRouted && unit.Position.DistanceTo(goal.Value) <= 10f)
                 {
@@ -387,8 +639,7 @@ namespace ChinaBettle.Battle
             }
         }
 
-        private MapPoint OwnBasePosition(Faction faction) =>
-            faction == Faction.Zhao ? new MapPoint(0f, -150f) : new MapPoint(0f, 115f);
+        private MapPoint OwnBasePosition(Faction faction) => Map.BaseOf(faction);
 
         // ───────────────────────────── 火区 ─────────────────────────────
 
@@ -423,6 +674,8 @@ namespace ChinaBettle.Battle
 
         private void TickSupply(float step)
         {
+            TickSupplyPath(step);
+
             supplyAccumulator += step;
             if (supplyAccumulator < Rules.Supply.RationTickSeconds)
             {
@@ -433,9 +686,20 @@ namespace ChinaBettle.Battle
 
             foreach (var unit in units.Where(u => u.Alive).ToList())
             {
-                // 己方粮仓补给（FOOD-03）：未焚毁且距离足够近 → 补满携粮。
-                bool nearGranary = Map.GranariesOf(unit.Faction).Any(g =>
+                // 己方粮仓补给（FOOD-03）：未焚毁、距离足够近、**且补给路径连通** → 补满携粮。
+                // FOOD-06：路径被切断（合围）时即使紧邻粮仓也补不上——粮车进不来。
+                bool pathOpen = IsZhaoPathOpenCached && unit.Faction == Faction.Zhao
+                    || unit.Faction != Faction.Zhao && IsSupplyPathOpen(unit.Faction);
+                bool nearGranary = pathOpen && Map.GranariesOf(unit.Faction).Any(g =>
                     !g.IsBurned && unit.Position.DistanceTo(g.Position) <= Rules.GranaryResupplyRadius);
+
+                // FOOD-06：补给路径恢复后饥饿度按每 tick −5% 回落（不清零），
+                // 即便部队尚未走到粮仓半径内——粮道通了就吃得上饭。
+                if (pathOpen && unit.Starvation > 0f)
+                {
+                    unit.RecoverStarvation(Rules.Supply.StarvationRecoveryPerTick);
+                }
+
                 if (nearGranary)
                 {
                     unit.Resupply();
@@ -444,10 +708,23 @@ namespace ChinaBettle.Battle
 
                 if (!unit.ConsumeRationTick(1f))
                 {
+                    // 仍有存粮：只是欠补，不入饥饿路径。
                     continue;
                 }
 
-                unit.ApplyStarvationTick(Rules.Supply.StarvationGainPerTick);
+                // FOOD-06：补给路径连通时**不进入饥饿累积**——粮道通了就吃得上饭，
+                // 只是尚未走到粮仓半径内（前面已按 −5%/tick 回落）。
+                if (pathOpen)
+                {
+                    continue;
+                }
+
+                // FOOD-06③：被围困（路径切断）持续 ≥3 分钟后，饥饿累积 ×1.5。
+                float siegeMultiplier = siegeSeconds < Rules.Supply.SiegeMultiplierAfterSeconds
+                    ? 1f
+                    : Rules.Supply.SiegeStarvationMultiplier;
+
+                unit.ApplyStarvationTick(Rules.Supply.StarvationGainPerTick * siegeMultiplier);
 
                 if (unit.Starvation > Rules.Supply.MoraleDamageThreshold)
                 {
@@ -462,10 +739,101 @@ namespace ChinaBettle.Battle
                 else
                 {
                     Log(ChronicleKind.Supply,
-                        $"{unit.DisplayLabel} 粮尽，饥饿度 {unit.Starvation * 100f:0}%（攻 −20%、移速 −30%，FOOD-04）");
+                        $"{unit.DisplayLabel} 粮尽，饥饿度 {unit.Starvation * 100f:0}%（攻 −20%、移速 −30%，FOOD-04）" +
+                        (siegeMultiplier > 1f ? "【被围困：饥饿累积 ×1.5】" : string.Empty));
                 }
             }
         }
+
+        /// <summary>
+        /// FOOD-06 补给路径判定：按 5 战场秒的节拍判断"己方粮仓 → 部队"的补给线是否连通。
+        ///
+        /// 简化口径（真源 FOOD-06）：断粮条件为**渡口被敌方占据**或**粮道走廊被敌方阻隔**；
+        /// 粮仓全焚亦视为断粮。判定节拍与围困时长分开累计，围困 ≥3 分钟后饥饿 ×1.5。
+        /// </summary>
+        private void TickSupplyPath(float step)
+        {
+            supplyPathAccumulator += step;
+            if (supplyPathAccumulator < Rules.Supply.SupplyPathCheckIntervalSeconds)
+            {
+                return;
+            }
+
+            supplyPathAccumulator -= Rules.Supply.SupplyPathCheckIntervalSeconds;
+
+            bool zhaoOpen = IsSupplyPathOpen(Faction.Zhao);
+            zhaoPathOpen = zhaoOpen;
+
+            if (zhaoOpen)
+            {
+                bool wasSieged = siegeSeconds > 0f;
+                siegeSeconds = 0f;
+                siegeAmplified = false;
+
+                if (wasSieged && siegeAnnounced)
+                {
+                    siegeAnnounced = false;
+                    Log(ChronicleKind.Supply, "赵军补给路径恢复——饥饿累积回到正常速率（FOOD-06）");
+                }
+
+                return;
+            }
+
+            siegeSeconds += Rules.Supply.SupplyPathCheckIntervalSeconds;
+
+            if (!siegeAnnounced)
+            {
+                siegeAnnounced = true;
+                Log(ChronicleKind.Supply,
+                    "赵军补给路径被切断——粮道已绝，饥饿开始累积（FOOD-06；>3 分钟后累积 ×1.5）");
+            }
+
+            if (siegeSeconds >= Rules.Supply.SiegeMultiplierAfterSeconds && !siegeAmplified)
+            {
+                siegeAmplified = true;
+                Log(ChronicleKind.Supply, "围困已逾 3 分钟——饥饿累积 ×1.5（FOOD-06③）");
+            }
+        }
+
+        /// <summary>赵方补给路径的**缓存**状态（由 <see cref="TickSupplyPath"/> 按判定节拍刷新）。</summary>
+        private bool IsZhaoPathOpenCached => zhaoPathOpen;
+
+        /// <summary>补给路径是否连通（FOOD-06）：粮仓未全焚，且渡口与粮道走廊无敌方占据。</summary>
+        public bool IsSupplyPathOpen(Faction faction)
+        {
+            if (!Map.GranariesOf(faction).Any(g => !g.IsBurned))
+            {
+                return false;
+            }
+
+            var ford = FordOf();
+            if (ford is null)
+            {
+                return true; // 无渡口的地图不做封锁判定（教学序章图）。
+            }
+
+            bool enemyHoldsFord = units.Any(u => u.Alive && u.Faction != faction && !u.IsScout &&
+                                                 u.Position.DistanceTo(ford.Center) <= Rules.GranaryResupplyRadius);
+            if (enemyHoldsFord)
+            {
+                return false;
+            }
+
+            // 粮道走廊（渡口所在区域）被敌方成建制占据（≥2 队）亦视为切断。
+            int enemyInCorridor = units.Count(u => u.Alive && u.Faction != faction && !u.IsScout &&
+                                                   Map.AreaIdAt(u.Position) == Map.AreaIdAt(ford.Center));
+            return enemyInCorridor < 2;
+        }
+
+        /// <summary>丹水渡口（嵌在不可通行河道内的可通行小体块，MAP-11）。</summary>
+        private TerrainVolume? FordOf() =>
+            Map.Volumes
+                .Where(v => v.Terrain == TerrainClass.Passable)
+                .Where(v => Map.Volumes.Any(big => big.Terrain == TerrainClass.Impassable &&
+                                                   System.MathF.Abs(v.Center.X - big.Center.X) <= big.Width * 0.5f &&
+                                                   System.MathF.Abs(v.Center.Z - big.Center.Z) <= big.Depth * 0.5f))
+                .OrderBy(v => v.Width * v.Depth)
+                .FirstOrDefault();
 
         // ───────────────────────────── 侦查与情报 ─────────────────────────────
 
@@ -768,7 +1136,7 @@ namespace ChinaBettle.Battle
                 return;
             }
 
-            unit.MoveGoal = Map.Clamp(goal);
+            unit.MoveGoal = Map.ClampToBounds(goal);
             unit.AttackTargetId = null;
         }
 
@@ -815,7 +1183,7 @@ namespace ChinaBettle.Battle
 
         private void TickCapture(float step)
         {
-            foreach (var prop in Map.Props.Where(p => p.Kind is PropKind.Camp or PropKind.City).ToList())
+            foreach (var prop in Map.Strongholds().ToList())
             {
                 bool contested = units.Any(u => u.Alive && u.Faction != prop.Owner && !u.IsRouted &&
                                                 u.Position.DistanceTo(prop.Position) <= prop.Radius);
@@ -903,14 +1271,7 @@ namespace ChinaBettle.Battle
 
         public static string FactionName(Faction faction) => faction == Faction.Zhao ? "赵" : "秦";
 
-        private static string AreaName(string areaId) => areaId switch
-        {
-            "zhao_rear" => "赵军后阵",
-            "choke" => "滏口陉隘口",
-            "yewang" => "野王",
-            "qin_forward" => "秦军前营",
-            _ => "高都",
-        };
+        private string AreaName(string areaId) => Map.AreaDisplayName(areaId);
 
         private static string TierName(CredibilityTier tier) => tier switch
         {

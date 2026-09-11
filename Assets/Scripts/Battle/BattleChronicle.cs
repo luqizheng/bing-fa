@@ -28,6 +28,9 @@ namespace ChinaBettle.Battle
         /// <summary>AI 决策（含门控与复核）。</summary>
         AiDecision,
 
+        /// <summary>剧本幕推进与叙事事件（CP-01…08）。</summary>
+        Campaign,
+
         /// <summary>胜负结算。</summary>
         Outcome,
     }

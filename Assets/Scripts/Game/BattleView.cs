@@ -50,16 +50,19 @@ namespace ChinaBettle.Game
         private void BuildGround()
         {
             var ground = CreatePrimitive(PrimitiveType.Plane, "Ground", root);
-            ground.localScale = new Vector3(22f, 1f, 34f); // Plane 原生 10×10 → 220×340 米
-            ground.position = new Vector3(0f, 0f, 0f);
+            // Plane 原生 10×10 → 按地图定义尺寸铺满（MAP-09：长平 340×420）
+            ground.localScale = new Vector3(sim.Map.Width / 10f, 1f, sim.Map.Depth / 10f);
+            ground.position = new Vector3((sim.Map.MinX + sim.Map.MaxX) * 0.5f, 0f, (sim.Map.MinZ + sim.Map.MaxZ) * 0.5f);
             SetColor(ground.gameObject, SlicePalette.Ground);
 
-            foreach (var patch in sim.Map.Patches)
+            foreach (var patch in sim.Map.Volumes)
             {
                 var block = CreatePrimitive(PrimitiveType.Cube, "Terrain_" + patch.Center.X + "_" + patch.Center.Z, root);
                 block.localScale = new Vector3(patch.Width, 0.2f, patch.Depth);
                 block.position = new Vector3(patch.Center.X, 0.1f, patch.Center.Z);
-                SetColor(block.gameObject, SlicePalette.DifficultTerrain);
+                SetColor(block.gameObject, patch.Terrain == TerrainClass.Impassable
+                    ? SlicePalette.ImpassableTerrain
+                    : SlicePalette.DifficultTerrain);
             }
         }
 

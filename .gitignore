@@ -66,9 +66,11 @@ crashlytics-build.properties
 Thumbs.db
 desktop.ini
 
-# ---- 本地工作流状态（OpenCode/OhMyOpenCode / WorkBuddy）----
+# ---- 本地工作流状态（OpenCode/OhMyOpenCode / WorkBuddy / Reasonix）----
 .omo/
 .workbuddy/
+reasonix.toml
+.reasonix/
 
 # ---- Codely / Tuanjie CLI 本地状态（用户级配置 + 包缓存）----
 .codely-cli/

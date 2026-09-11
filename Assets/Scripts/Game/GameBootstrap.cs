@@ -20,7 +20,7 @@ namespace ChinaBettle.Game
 
             var root = new GameObject("ChinaBettle.SliceGame");
             root.AddComponent<SliceGame>();
-            Debug.Log("[ChinaBettle] 垂直切片启动：赵 vs 秦 · 太行山滏口陉（SLICE-01）。" +
+            Debug.Log("[ChinaBettle] 垂直切片启动：赵 vs 秦 · 长平之战主战场（SLICE-01）。" +
                       "F1 减灶 / F2 增灶 / F3 火攻；左键选择、右键移动或攻击；空格暂停。");
         }
     }

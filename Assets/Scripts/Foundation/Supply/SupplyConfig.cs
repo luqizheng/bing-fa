@@ -14,7 +14,12 @@ namespace ChinaBettle.Foundation.Supply
         int MoraleDamagePerTick = -10,
         int BurnGranaryStarvationJump = 30,
         int FireAttackRationLossPercent = 40,
-        int FireZoneDurationSeconds = 60)
+        int FireZoneDurationSeconds = 60,
+        // ── FOOD-06 合围断粮（v1.3 新增；真源值，【初值】待平衡）──
+        float SupplyPathCheckIntervalSeconds = 5f,
+        float SiegeStarvationMultiplier = 1.5f,
+        float SiegeMultiplierAfterSeconds = 180f,
+        float StarvationRecoveryPerTick = 0.05f)
     {
         /// <summary>携粮上限折算的战场分钟数（FOOD-01：3 日粮 = 18 战场分钟）。</summary>
         public int MaxRationBattleMinutes => MaxRationDays * BattleMinutesPerNarrativeDay;

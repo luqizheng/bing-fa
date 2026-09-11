@@ -16,7 +16,72 @@ namespace ChinaBettle.Tests.Battle
     /// </summary>
     public sealed class BattleSimulationTests
     {
+        // P2 起默认地图＝长平之战主战场（SliceMaps.Default）。测试一律**按语义取点**
+        // （取"敌方粮仓""敌方单位"等对象），不硬编码坐标与 prop id——地图数据变化不应改测试。
         private static BattleSimulation NewSim(bool autoPlayAi = false) => new(new BattleRules(), autoPlayAi);
+
+        private static BattleSimulation NewSimOn(BattleMapDefinition map, bool autoPlayAi = false) =>
+            new(new BattleRules(), autoPlayAi, map);
+
+        /// <summary>敌方第一处未焚毁粮仓（火攻的合法目标）。</summary>
+        private static MapProp EnemyGranary(BattleSimulation sim, Faction caster) =>
+            sim.Props.First(p => p.Owner != caster && p.Kind == PropKind.Granary && !p.IsBurned);
+
+
+        /// <summary>
+        /// 取一处"开阔平原"坐标（无地形体块覆盖、可通行），供把部队聚拢成营盘的测试使用。
+        ///
+        /// **选址纪律**：以 <paramref name="awayFrom"/>（通常为敌方本阵）为中心向外找，
+        /// 且要求该点距**敌方所有存活单位**至少 <paramref name="minEnemyDistance"/> 米——
+        /// 否则聚拢后的营地会落在敌方阵中，开局即接战减员，令测试隔离性失效。
+        /// </summary>
+        private static MapPoint OpenGround(BattleSimulation sim, MapPoint awayFrom, Faction enemyOf, float minEnemyDistance)
+        {
+            var map = sim.Map;
+            for (float radius = 40f; radius <= 260f; radius += 20f)
+            {
+                for (int step = 0; step < 32; step++)
+                {
+                    float angle = step / 32f * System.MathF.PI * 2f;
+                    var p = new MapPoint(
+                        awayFrom.X + System.MathF.Cos(angle) * radius,
+                        awayFrom.Z + System.MathF.Sin(angle) * radius);
+
+                    if (map.TerrainAt(p) != TerrainClass.Passable)
+                    {
+                        continue;
+                    }
+
+                    bool clear = true;
+                    for (int dx = -40; dx <= 40 && clear; dx += 10)
+                    {
+                        for (int dz = -40; dz <= 40 && clear; dz += 10)
+                        {
+                            if (map.TerrainAt(new MapPoint(p.X + dx, p.Z + dz)) != TerrainClass.Passable)
+                            {
+                                clear = false;
+                            }
+                        }
+                    }
+
+                    if (!clear)
+                    {
+                        continue;
+                    }
+
+                    bool farEnough = sim.Units
+                        .Where(u => u.Alive && u.Faction == enemyOf)
+                        .All(u => u.Position.DistanceTo(p) >= minEnemyDistance);
+
+                    if (farEnough)
+                    {
+                        return p;
+                    }
+                }
+            }
+
+            return MapPoint.Zero;
+        }
 
         [Test]
         public void UnitCatalog_MatchesSpecNumbers()
@@ -77,14 +142,14 @@ namespace ChinaBettle.Tests.Battle
         public void FireAttack_Burns40PercentGranary_CreatesFireZone_AndSkillRevealIntel()
         {
             var sim = NewSim();
-            var target = sim.Props.First(p => p.Id == "qin_granary_forward");
+            var target = EnemyGranary(sim, Faction.Zhao);
             float before = target.Stock;
 
             // 让一名赵军斥候前出到起火点附近（保证"有视野"分支被走到）。
             var scout = sim.Units.First(u => u.Faction == Faction.Zhao && u.IsScout);
-            scout.Position = new MapPoint(0f, 30f);
+            scout.Position = target.Position;
 
-            Assert.That(sim.TryCast(Faction.Zhao, StratagemId.FireAttack, new MapPoint(0f, 50f)), Is.True);
+            Assert.That(sim.TryCast(Faction.Zhao, StratagemId.FireAttack, target.Position), Is.True);
 
             Assert.That(target.Stock, Is.EqualTo(before * 0.6f).Within(1e-3f), "SKILL-03：立即销毁 40% 粮草");
             Assert.That(sim.FireZones, Has.Count.EqualTo(1), "形成火区");
@@ -100,11 +165,12 @@ namespace ChinaBettle.Tests.Battle
         public void FireZone_BurnsUnitsInside()
         {
             var sim = NewSim();
+            var target = EnemyGranary(sim, Faction.Zhao);
             var victim = sim.Units.First(u => u.Faction == Faction.Qin && !u.IsScout);
-            sim.TryCast(Faction.Zhao, StratagemId.FireAttack, new MapPoint(0f, 50f));
+            sim.TryCast(Faction.Zhao, StratagemId.FireAttack, target.Position);
 
-            // 把受害者挪到火区中心（(0,50)，半径 26m）。
-            victim.Position = new MapPoint(0f, 50f);
+            // 把受害者挪到火区中心（火区以起火点＝粮仓为中心）。
+            victim.Position = target.Position;
             float healthBefore = victim.Health;
 
             sim.Tick(6.1f); // 6 秒 → 3 个 tick × 8 = 24 点
@@ -120,21 +186,24 @@ namespace ChinaBettle.Tests.Battle
             var rules = sim.Rules;
 
             // 把秦军聚拢成一处营盘（把"观察目标集"固定下来，隔离变量），并让斥候扛住弩兵射击。
+            // 营盘选址＝大地图内一处可通行平原（取秦军本阵一侧，避开壁垒带与河道）。
             var qinUnits = sim.Units.Where(u => u.Alive && u.Faction == Faction.Qin).ToList();
+            // 营盘选址：在**秦军本阵一侧**离**赵军**至少 150m 的开阔地（避免开局即接战减员，
+            // 隔离"观察-欺骗"链路）。坐标不硬编码，随地图数据自适应。
+            var campCentroid = OpenGround(sim, sim.Map.BaseOf(Faction.Qin), Faction.Zhao, 150f);
             for (int i = 0; i < qinUnits.Count; i++)
             {
-                qinUnits[i].Position = new MapPoint(-7f + i * 2f, 100f);
+                qinUnits[i].Position = new MapPoint(campCentroid.X - 7f + i * 2f, campCentroid.Z);
             }
 
             float trueMen = qinUnits.Count * SimUnit.MenPerUnit;
-            var campCentroid = new MapPoint(0f, 100f);
 
             // 秦军（AI）在自己营地施放增灶示强（AI-05）——被欺骗方是观察秦军的赵军，即玩家。
             Assert.That(sim.TryCast(Faction.Qin, StratagemId.AddStove, campCentroid), Is.True);
 
             // 玩家先花掉 40 点火攻（SKILL-03），腾出识破奖励的空间
             // （SKILL-11：+15 受 100 上限约束，满点时溢出不累积）。
-            Assert.That(sim.TryCast(Faction.Zhao, StratagemId.FireAttack, new MapPoint(0f, 50f)), Is.True);
+            Assert.That(sim.TryCast(Faction.Zhao, StratagemId.FireAttack, EnemyGranary(sim, Faction.Zhao).Position), Is.True);
             Assert.That(sim.PlayerPoints.Points, Is.EqualTo(60));
 
             var scout = sim.Units.First(u => u.Faction == Faction.Zhao && u.IsScout);
@@ -192,19 +261,34 @@ namespace ChinaBettle.Tests.Battle
         [Test]
         public void TwentyMinuteRun_ReachesOutcome_WithoutExceptions()
         {
+            // 语义（P3 起）：剧本（CP-08）可提前给出结局；本用例锁定的是
+            // ①**不会**抛异常、②**要么**提前结算**要么**撑满 20 分钟硬上限（TIME-04），不许两者皆非。
             var sim = NewSim(autoPlayAi: true);
 
-            for (int i = 0; i < 200; i++)
+            for (int i = 0; i < 200 && !sim.IsFinished; i++)
             {
                 sim.Tick(6f); // 200 × 6s = 20 战场分钟
             }
 
             sim.Tick(1f); // 跨过硬上限（浮点累计余量）
 
-            Assert.That(sim.IsFinished, Is.True, "20 分钟硬上限必结算（TIME-04）");
+            Assert.That(sim.IsFinished, Is.True, "提前结算或 20 分钟硬上限，二者必居其一（TIME-04/CP-08）");
             Assert.That(sim.Chronicle, Is.Not.Empty);
             Assert.That(sim.Chronicle.Any(c => c.Kind == ChronicleKind.Outcome), Is.True);
-            Assert.That(sim.Clock.ElapsedSeconds, Is.GreaterThanOrEqualTo(1200f - 0.5f));
+
+            bool endedEarly = sim.Clock.ElapsedSeconds < 1200f - 0.5f;
+            if (endedEarly)
+            {
+                // 提前结算只允许来自剧本结局（CP-08）或歼灭/焚粮（GDD §2.7.1）。
+                Assert.That(
+                    sim.OutcomeReason.Contains("结局") || sim.OutcomeReason.Contains("歼灭") || sim.OutcomeReason.Contains("焚"),
+                    Is.True,
+                    $"提前结算必须是合法结局，实际：{sim.OutcomeReason}");
+            }
+            else
+            {
+                Assert.That(sim.Clock.ElapsedSeconds, Is.GreaterThanOrEqualTo(1200f - 0.5f), "未提前结算则必须撑满硬上限");
+            }
         }
 
         [Test]

@@ -63,6 +63,9 @@ namespace ChinaBettle.Game
         /// <summary>减速通行地形底色（深墨绿，叠加半透明条纹纹理引用真源 COMBAT-16）。</summary>
         public static readonly Color DifficultTerrain = DeepMossGreen;
 
+        /// <summary>不可通行地形（绝壁/深水/壁垒非缺口段）——墨黑加深灰调，与焦土区分（真源 COMBAT-05/18）。</summary>
+        public static readonly Color ImpassableTerrain = new(0.180f, 0.165f, 0.150f);
+
         /// <summary>焦土（墨黑）。</summary>
         public static readonly Color Burned = InkBlack;
 

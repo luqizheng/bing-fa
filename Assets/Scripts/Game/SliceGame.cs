@@ -40,7 +40,7 @@ namespace ChinaBettle.Game
             cam = CreateCamera();
             CreateLight();
 
-            sim = new BattleSimulation(new BattleRules(), autoPlayAi: true);
+            sim = new BattleSimulation(new BattleRules(), autoPlayAi: true, map: SliceMaps.Default);
 
             var root = new GameObject("SliceWorld").transform;
             root.SetParent(transform, worldPositionStays: false);
@@ -102,7 +102,7 @@ namespace ChinaBettle.Game
                 }
             }
 
-            sim = new BattleSimulation(new BattleRules(), autoPlayAi: true);
+            sim = new BattleSimulation(new BattleRules(), autoPlayAi: true, map: SliceMaps.Default);
             var root = new GameObject("SliceWorld").transform;
             root.SetParent(transform, worldPositionStays: false);
             view = new BattleView(sim, root);
@@ -337,7 +337,7 @@ namespace ChinaBettle.Game
             float scroll = Input.mouseScrollDelta.y;
             if (Mathf.Abs(scroll) > 0.01f)
             {
-                cam.orthographicSize = Mathf.Clamp(cam.orthographicSize - scroll * 8f, 35f, 170f);
+                cam.orthographicSize = Mathf.Clamp(cam.orthographicSize - scroll * 8f, 35f, 260f);
             }
         }
 
@@ -425,19 +425,32 @@ namespace ChinaBettle.Game
             return lines;
         }
 
+        /// <summary>
+        /// 幕僚面板（真源 ADV-01…07）。
+        ///
+        /// 换将（ADV-07 / CP-03）：长平战役里第 ③ 幕廉颇去职、赵括接任——
+        /// **在位幕僚**随幕切换，去职者标注"已去职"，苏代不在长平登场（仍灰显）。
+        /// </summary>
         private List<AdvisorLine> BuildAdvisorLines()
         {
-            return new List<AdvisorLine>
+            bool dismissed = sim.CurrentAct >= CampaignAct.Dismissal;
+            var lines = new List<AdvisorLine>
             {
-                new("廉颇", "谨慎 9", AdviceOf(AdvisorProfile.LianPo), highlightedAdvisor == 1),
-                new("赵括", "激进 9", AdviceOf(AdvisorProfile.ZhaoKuo), highlightedAdvisor == 2),
-                new("苏代", "奇谋 8", "切片未实装（二期）", false),
+                dismissed
+                    ? new AdvisorLine("廉颇", "谨慎 9 · 已去职", "赵王以赵括代之——老将的固守之策不再被采纳", highlightedAdvisor == 1)
+                    : new AdvisorLine("廉颇", "谨慎 9", AdviceOf(AdvisorProfile.LianPo) + "｜" + LianPoCounsel(), highlightedAdvisor == 1),
+                new AdvisorLine("赵括", "激进 9" + (dismissed ? " · 在任" : " · 待命"),
+                    dismissed ? AdviceOf(AdvisorProfile.ZhaoKuo) + "｜" + ZhaoKuoCounsel() : "未受命为将（CP-03）",
+                    highlightedAdvisor == 2),
+                new AdvisorLine("苏代", "奇谋 8", "长平战役未登场（二期）", false),
             };
+
+            return lines;
         }
 
         /// <summary>
         /// 幕僚代理信号（TRUST-10）：幕僚读的是【AI 对玩家的信任桶】（AI 内部状态），
-        /// 只输出"施计时机"档位、不暴露桶值。桶值取自 AI 视角关于赵军兵力的主题。
+        /// 只输出"施计时机"档位、**不暴露桶值**。桶值取自 AI 视角关于赵军兵力的主题。
         /// </summary>
         private string AdviceOf(AdvisorProfile profile)
         {
@@ -449,6 +462,29 @@ namespace ChinaBettle.Game
                 AdvisorAdvice.Hesitant => "勉强，恐引复核",
                 _ => "时机未到，先养",
             };
+        }
+
+        /// <summary>廉颇（谨慎 9）：守势忠告——壁垒是本方最大优势，出垒即弃之。</summary>
+        private string LianPoCounsel()
+        {
+            if (sim.AiPosture == AiPosture.Encircle)
+            {
+                return "已被合围，坚守待援不如择向突围";
+            }
+
+            return "坚守壁垒勿出，秦军远来粮道更长";
+        }
+
+        /// <summary>赵括（激进 9）：攻势忠告——但要用情报判断"秦军是否真的虚弱"。</summary>
+        private string ZhaoKuoCounsel()
+        {
+            float bucket = sim.PlayerTrust.Get(sim.PlayerTopic);
+            if (bucket < 0.5f)
+            {
+                return "秦军虚实未明，须先遣斥候清点，勿轻进";
+            }
+
+            return "秦军已疲，宜悉众击之，一战定之";
         }
 
         private IEnumerable<SimUnit> SelectedUnits() =>
@@ -497,13 +533,13 @@ namespace ChinaBettle.Game
         private static void Configure(Camera camera)
         {
             camera.orthographic = true;
-            camera.orthographicSize = 90f;
+            camera.orthographicSize = 110f;
             camera.nearClipPlane = 0.3f;
-            camera.farClipPlane = 800f;
+            camera.farClipPlane = 1200f;
             camera.clearFlags = CameraClearFlags.SolidColor;
             camera.backgroundColor = SlicePalette.CameraBackground;
-            camera.transform.position = new Vector3(0f, 150f, -80f);
-            camera.transform.rotation = Quaternion.Euler(58f, 0f, 0f);
+            camera.transform.position = new Vector3(0f, 180f, -60f);
+            camera.transform.rotation = Quaternion.Euler(62f, 0f, 0f);
         }
 
         private static void CreateLight()
