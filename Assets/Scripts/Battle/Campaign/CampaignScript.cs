@@ -44,7 +44,10 @@ namespace ChinaBettle.Battle
         /// <summary>守势：依托守势线固守（第 ①②幕）。</summary>
         Hold,
 
-        /// <summary>攻势：主动前压（第 ④ 幕佯败诱敌后转入追击）。</summary>
+        /// <summary>追击（佯败诱敌）：且战且退、把敌军引离有利地形（第 ④ 幕，白起"佯败而走"）。</summary>
+        Pursue,
+
+        /// <summary>攻势：主动前压（AI 采信"敌弱"时的通用攻势，非剧本强制）。</summary>
         Offensive,
 
         /// <summary>合围：就地封锁、绝敌后路与粮道（第 ⑤⑥幕）。</summary>
@@ -80,6 +83,14 @@ namespace ChinaBettle.Battle
 
         /// <summary>是否为玩家可见的关键事件（HUD 弹出提示）。</summary>
         public bool IsHighlight { get; init; }
+    }
+
+    /// <summary>
+    /// 秦军转入追击态势（CP-02 ④，白起佯败诱敌）：且战且退，把已出垒的赵军引离壁垒，
+    /// 为 ⑤ 幕的合围预备战场。与 <see cref="OffensiveOrder"/>（通用前压）区分：追击是**后撤诱导**。
+    /// </summary>
+    public sealed class PursueOrder : CampaignEvent
+    {
     }
 
     /// <summary>发动收官攻势：秦军主动向赵军推进（由仿真把赵军非斥候单位交由 AI 接管并压上）。</summary>

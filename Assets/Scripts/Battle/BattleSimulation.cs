@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using ChinaBettle.AI;
+using ChinaBettle.Battle.Campaign;
 using ChinaBettle.Foundation.Combat;
 using ChinaBettle.Foundation.Intel;
 using ChinaBettle.Foundation.Map;
@@ -38,6 +39,8 @@ namespace ChinaBettle.Battle
         private readonly CounterRing counterRing;
 
         private readonly CampaignRunner campaign = new();
+        private readonly BattleReplay replay = new();
+        private readonly TutorialGuide tutorial = new();
 
         private float observationAccumulator;
         private float supplyAccumulator;
@@ -117,6 +120,12 @@ namespace ChinaBettle.Battle
 
         /// <summary>长平剧本运行器（CP-01…08）：幕状态、幕历史与结局。</summary>
         public CampaignRunner Campaign => campaign;
+
+        /// <summary>战后复盘数据（GDD §5.4）：桶值曲线、情报条数、幕轨迹的只读快照。</summary>
+        public BattleReplay Replay => replay;
+
+        /// <summary>教程引导（P6-2 五步：侦查 → 辨假灶 → 施计 → 识破 → 复盘）。非阻塞，不锁操作。</summary>
+        public TutorialGuide Tutorial => tutorial;
 
         /// <summary>当前幕（HUD 显示）。</summary>
         public CampaignAct CurrentAct => campaign.Current;
@@ -212,6 +221,47 @@ namespace ChinaBettle.Battle
             // 反之会让"全歼秦军"被改写成"秦军退却"，结算原因失真。
             EvaluateOutcome();
             TickCampaign(now);
+            TickReplay(step, now);
+            TickTutorial();
+        }
+
+        /// <summary>
+        /// 教程推进（P6-2）：只看玩家侧可见量（情报条数/施计与识破计数/是否结算），
+        /// **不读敌方真值**（NET-02）——教程提示不能成为透视工具。
+        /// </summary>
+        private void TickTutorial()
+        {
+            var ctx = new TutorialContext
+            {
+                ActiveScoutIntelCount = PlayerIntel.Records.Count(r =>
+                    r.Status == Foundation.Intel.IntelStatus.Active &&
+                    r.SourceType == Foundation.Intel.IntelSourceType.ScoutVisual),
+                SawTamperedPayload = AuthoritativeRecords.Any(a => a.IsFabricated),
+                DidProximityCheck = AuthoritativeRecords.Any(a => a.Detected),
+                PlayerCastCount = stats.PlayerCasts,
+                PlayerDetectionCount = stats.PlayerDetections,
+                BattleFinished = IsFinished,
+            };
+
+            if (tutorial.Step(ctx) && tutorial.LastAdvancedMessage is not null)
+            {
+                Log(ChronicleKind.Campaign, tutorial.LastAdvancedMessage);
+            }
+        }
+
+        /// <summary>
+        /// 复盘采样（GDD §5.4）：按节拍记录 AI 对玩家主题的桶值、综合可信度与活跃情报条数。
+        /// 只读快照，不影响任何规则结算。
+        /// </summary>
+        private void TickReplay(float step, float now)
+        {
+            replay.Tick(
+                step,
+                now,
+                AiTopic,
+                AiTrust.Get(AiTopic),
+                AiIntel.AggregateCredibility(AiTopic, now),
+                AiIntel.Records.Count(r => r.Status == Foundation.Intel.IntelStatus.Active));
         }
 
         // ───────────────────────────── 剧本（CP-01…08）─────────────────────────────
@@ -232,6 +282,11 @@ namespace ChinaBettle.Battle
             foreach (var e in result.Events)
             {
                 ApplyCampaignEvent(e);
+
+                if (e is CampaignActEntered entered)
+                {
+                    replay.RecordAct(now, entered.Act.ToString(), entered.Title);
+                }
             }
         }
 
@@ -302,6 +357,11 @@ namespace ChinaBettle.Battle
                     Log(ChronicleKind.Campaign, sortie.Text);
                     break;
 
+                case PursueOrder pursue:
+                    aiPosture = AiPosture.Pursue;
+                    Log(ChronicleKind.Campaign, pursue.Text);
+                    break;
+
                 case OffensiveOrder offensive:
                     aiPosture = AiPosture.Offensive;
                     Log(ChronicleKind.Campaign, offensive.Text);
@@ -351,17 +411,20 @@ namespace ChinaBettle.Battle
 
             MapPoint axis = ford?.Center ?? Map.AiHoldLine;
 
-            // 落点纪律：**停在丹水北岸**，不越过渡口。
+            // 落点纪律：**停在丹水北岸、且不进入秦军远程射程**。
             // 史实中赵军是被"佯退"逐步引过河的；剧本只负责下令出垒（脱离壁垒），
-            // 越河追击的过程应由战场态势自然发生。若一次性把目标设到秦军守势线附近，
-            // 赵军会径直撞进敌阵——第 ④ 幕就崩，后面的合围/断粮幕无从谈起。
-            float northBank = axis.Z - 60f;
+            // 越河追击的过程应由战场态势自然发生。
+            // 距离纪律：秦弩射程 180m，赵军若出垒即进射程圈会被单方面消耗——实测会导致
+            // 第 ④ 幕就崩、⑦ 幕永不发生（见完成计划 §8 的平衡记录）。
+            float enemyReach = units.Where(u => u.Alive && u.Faction == Faction.Qin && u.Definition.HasRangedAttack)
+                .Select(u => u.Definition.RangedRange).DefaultIfEmpty(0f).Max();
+            float northBank = axis.Z - MathF.Max(60f, enemyReach + 40f);
 
             var zhaoCombat = units.Where(u => u.Alive && u.Faction == Faction.Zhao && !u.IsScout).ToList();
             for (int i = 0; i < zhaoCombat.Count; i++)
             {
                 var unit = zhaoCombat[i];
-                float standoff = unit.Definition.HasRangedAttack ? -30f : (unit.IsCavalry ? -10f : 0f);
+                float standoff = unit.Definition.HasRangedAttack ? -25f : (unit.IsCavalry ? -10f : 0f);
 
                 unit.MoveGoal = Map.ClampToBounds(new MapPoint(
                     axis.X + (i - zhaoCombat.Count / 2f) * 12f,

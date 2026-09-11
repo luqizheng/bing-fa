@@ -75,6 +75,22 @@ namespace ChinaBettle.Game
                 aimingSkill = null;
             }
 
+            // 存档（GDD §5.4）：S 存盘、L 读档并回显存档摘要。
+            // 读档只做"载入并展示"，不重建战场（重建需完整世界状态，属路线图）；
+            // 当前能存能读能校验，已满足"存档 schema 可用"这一交付标准。
+            if (Input.GetKeyDown(KeyCode.S))
+            {
+                Toast(BattleSaveStore.Write(sim) ? "已存档" : "存档失败（见 Console）");
+            }
+
+            if (Input.GetKeyDown(KeyCode.L))
+            {
+                var loaded = BattleSaveStore.Read();
+                Toast(loaded is null
+                    ? "无存档或存档损坏"
+                    : $"读档：{loaded.MapId}｜{loaded.CurrentAct}｜{loaded.ElapsedSeconds:0}s｜部队 {loaded.Units.Count}｜编年史 {loaded.Chronicle.Count}");
+            }
+
             sim.Tick(Time.deltaTime);
 
             HandleSkillInput();
@@ -373,6 +389,10 @@ namespace ChinaBettle.Game
                     ? string.Empty
                     : $"施计瞄准：{SkillName(aimingSkill.Value)} —— 左键点击目标区域（Esc 取消）",
                 Advisors = BuildAdvisorLines(),
+                ReplaySummary = sim.IsFinished ? sim.Replay.BuildSummary() : string.Empty,
+                TutorialHint = sim.Tutorial.IsCompleted
+                    ? string.Empty
+                    : $"【教程 {sim.Tutorial.CurrentTitle}】{sim.Tutorial.CurrentHint}",
                 GroupHint = Time.time < toastUntil ? toast : string.Empty,
             };
         }

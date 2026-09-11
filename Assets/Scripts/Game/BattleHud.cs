@@ -45,6 +45,12 @@ namespace ChinaBettle.Game
 
         public IReadOnlyList<AdvisorLine> Advisors { get; init; } = new List<AdvisorLine>();
 
+        /// <summary>战后复盘摘要（GDD §5.4；结算面板显示桶值轨迹与幕推进）。</summary>
+        public string ReplaySummary { get; init; } = string.Empty;
+
+        /// <summary>教程提示（P6-2 五步引导；非阻塞，只提示不锁操作）。</summary>
+        public string TutorialHint { get; init; } = string.Empty;
+
         public string GroupHint { get; init; } = string.Empty;
     }
 
@@ -255,11 +261,16 @@ namespace ChinaBettle.Game
             {
                 outcomeTitle.text = model.OutcomeTitle;
                 outcomeBody.text = model.OutcomeReason + "\n" + model.StatsLine +
+                                   (string.IsNullOrEmpty(model.ReplaySummary)
+                                       ? string.Empty
+                                       : "\n\n—— 战后复盘（GDD §5.4）——\n" + model.ReplaySummary) +
                                    "\n\n—— 编年史（末 8 条）——\n" + Tail(model.Chronicle, 8) +
                                    "\n\n按 R 重开一局";
             }
 
-            topCenter.text = model.GroupHint;
+            // topCenter 兼作战场 toast 与教程提示：有 toast 时优先 toast（玩家操作反馈立刻可见），
+            // 否则显示当前教程步骤——教程是非阻塞的指路，不与操作反馈抢位置。
+            topCenter.text = string.IsNullOrEmpty(model.GroupHint) ? model.TutorialHint : model.GroupHint;
         }
 
         private static string BuildIntelText(HudModel model)

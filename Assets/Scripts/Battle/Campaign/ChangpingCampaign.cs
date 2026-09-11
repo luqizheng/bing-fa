@@ -124,8 +124,8 @@ namespace ChinaBettle.Battle
                             Text = "赵括悉更约束、易置军吏，出兵击秦师——赵军离开壁垒，渡过丹水。",
                             IsHighlight = true,
                         },
-                        // 秦军佯败诱敌（AI-05②：减灶示弱由 AI 自行施放，此处只表达态势推进）。
-                        new OffensiveOrder
+                        // 秦军佯败诱敌（CP-02 ④，白起"佯败而走"）：转入追击态势，把赵军引离壁垒。
+                        new PursueOrder
                         {
                             Text = "白起阴使奇兵——秦军一部佯败退走，赵括悉众追之。",
                             IsHighlight = true,
