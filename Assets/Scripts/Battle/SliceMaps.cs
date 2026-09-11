@@ -128,7 +128,14 @@ namespace ChinaBettle.Battle
                 new MapDeployment(SliceUnitCatalog.LightCavalry, new MapPoint(-130f, 155f), "秦骑1"),
                 new MapDeployment(SliceUnitCatalog.LightCavalry, new MapPoint(130f, 155f), "秦骑2"),
                 new MapDeployment(SliceUnitCatalog.Crossbow, new MapPoint(0f, 168f), "秦弩1"),
+                // MAP-15：每方 3 处斥候散出点（渡口 / 故关 / 山地各一）。
+                // 数量纪律（真源 INTEL-02）：目击单位修正 = +2% × min(斥候数, 10)。
+                // 单斥候只 +2%，而 INTEL-03 需 8 分钟才 +8% —— 叠加基值 65% 后**永远够不到** 70% 的
+                // "可信"决策线（实测综合可信度恒在 62–65% 存疑档），AI 于是永远走 ForceRecheck、
+                // 永不采信任何载荷，欺骗无从生效。3 名斥候给 +6%，配合持续目击可越过决策线。
                 new MapDeployment(SliceUnitCatalog.Scout, new MapPoint(0f, 95f), "秦斥候1"),
+                new MapDeployment(SliceUnitCatalog.Scout, new MapPoint(30f, 100f), "秦斥候2"),
+                new MapDeployment(SliceUnitCatalog.Scout, new MapPoint(-30f, 100f), "秦斥候3"),
             };
 
             return new BattleMapDefinition(

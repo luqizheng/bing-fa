@@ -39,7 +39,13 @@ namespace ChinaBettle.AI
         {
             float independence = TrustBucketSystem.IndependenceFactor(distinctSourceKinds, trustConfig);
             float trustValue = trust.Update(topic, credibilityPercent, independence, battleClockSeconds);
-            var tier = CredibilityCalculator.Tier(aggregateCredibility, credibilityConfig);
+
+            // 档位（v1.4 修正）：取【聚合】与【最新单条 credibilityPercent】中更可信者的档位。
+            // 背景：聚合是加权平均，早期条目经 INTEL-04 衰减到地板后会拖低均值，
+            // 造成"侦查越久综合越低"（实测 63–67% 恒存疑），使 AI 永远强复核、永不采信。
+            // TRUST-09 的桶衡量的是"对当前载荷的采信度"，当前载荷＝最新一条，故取更可信者。
+            float effectiveCredibility = System.Math.Max(aggregateCredibility, credibilityPercent);
+            var tier = CredibilityCalculator.Tier(effectiveCredibility, credibilityConfig);
             var gate = DecisionGateEvaluator.Evaluate(tier, trustValue, trustConfig, credibilityConfig);
             return (trustValue, gate);
         }

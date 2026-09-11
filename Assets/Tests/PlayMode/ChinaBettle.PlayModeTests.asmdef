@@ -2,6 +2,7 @@
     "name": "ChinaBettle.PlayModeTests",
     "rootNamespace": "ChinaBettle.Tests.PlayMode",
     "references": [
+        "ChinaBettle.Battle",
         "ChinaBettle.Game",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"

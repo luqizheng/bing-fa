@@ -23,6 +23,17 @@ namespace ChinaBettle.Foundation.Trust
     /// <summary>情报层档位 × 信念层信任桶的确定性联合门控（无随机决策，GDD §5.2 v1.1）。</summary>
     public static class DecisionGateEvaluator
     {
+        /// <summary>
+        /// 门控评估（真源 TRUST-05）。
+        ///
+        /// **档位口径（v1.4 修正）**：<paramref name="tier"/> 应取"**聚合可信度与最新单条中更可信者**"的档位，
+        /// 而不是只取聚合。原因（实机发现）：`INTEL-05` 的综合是全活跃条目的加权平均，
+        /// 早期条目按 `INTEL-04` 衰减到地板后会**拖低均值**——同一主题侦查越久、综合反而越低
+        /// （实测：单条 fresh 72.3% 但综合仅 63–67%），导致 AI 永远落入存疑档、恒走强复核，
+        /// 既不采信载荷（欺骗失效）也无法行动（态势冻结）。
+        /// TRUST-09 的语义是桶衡量"对**当前载荷**的采信度"，而当前载荷正是最新一条——
+        /// 故取更可信者才与之相符。调用方见 <c>IntelDrivenDecision.OnIntel</c>。
+        /// </summary>
         public static DecisionGate Evaluate(
             CredibilityTier tier,
             float trustBucketValue,

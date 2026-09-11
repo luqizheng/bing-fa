@@ -100,8 +100,12 @@ namespace ChinaBettle.Tests.Battle
         {
             var sim = NewSim();
 
-            Assert.That(sim.Units.Count(u => u.Faction == Faction.Zhao), Is.EqualTo(9));
-            Assert.That(sim.Units.Count(u => u.Faction == Faction.Qin), Is.EqualTo(8));
+            // 部署数量取自地图定义（MAP-15：每方 3 处斥候散出点），不硬编码——地图改部署不应改本用例。
+            var expected = SliceMaps.ChangpingV1.Deployments;
+            Assert.That(sim.Units.Count(u => u.Faction == Faction.Zhao),
+                Is.EqualTo(expected.Count(d => d.Label.StartsWith("赵"))));
+            Assert.That(sim.Units.Count(u => u.Faction == Faction.Qin),
+                Is.EqualTo(expected.Count(d => d.Label.StartsWith("秦"))));
             Assert.That(sim.Units.Any(u => u.Faction == Faction.Zhao && u.IsScout), Is.True);
             Assert.That(sim.Props.Any(p => p.Kind == PropKind.Granary && p.Owner == Faction.Qin), Is.True);
             Assert.That(sim.Clock.ElapsedSeconds, Is.Zero);

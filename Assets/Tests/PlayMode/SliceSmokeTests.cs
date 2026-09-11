@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Linq;
 using System.Text.RegularExpressions;
+using ChinaBettle.Battle;
 using ChinaBettle.Game;
 using NUnit.Framework;
 using UnityEngine;
@@ -22,10 +23,10 @@ namespace ChinaBettle.Tests.PlayMode
     public sealed class SliceSmokeTests
     {
         /// <summary>
-        /// DeployInitialForces 的固定编制：赵 9（骑 2 / 枪 3 / 弩 2 / 斥候 2）
-        /// + 秦 8（锐士 2 / 枪 2 / 轻骑 2 / 弩 1 / 斥候 1）= 17。
+        /// 初始编制**取自地图定义**（不硬编码）——地图改部署（如按 MAP-15 补斥候）不应改本用例。
+        /// 长平图当前为 19 队。
         /// </summary>
-        private const int DeployedUnitCount = 17;
+        private static int DeployedUnitCount => SliceMaps.ChangpingV1.Deployments.Count;
 
         /// <summary>观察窗口（真实秒）。按真实时间而非帧数，避免 batchmode 帧率波动造成假阴性。</summary>
         private const float ObserveSeconds = 3f;

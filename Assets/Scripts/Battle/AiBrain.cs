@@ -24,6 +24,15 @@ namespace ChinaBettle.Battle
     {
         private readonly BattleSimulation sim;
 
+        /// <summary>强复核的冷却截止时刻（TRUST-07 重入保护：避免"复核→冻结→再复核"的永久瘫痪）。</summary>
+        private float recheckCooldownUntilSeconds = -1f;
+
+        /// <summary>AI-06 抽调态势的结束时刻（-1 表示当前无抽调态势）。</summary>
+        private float divertUntilSeconds = -1f;
+
+        /// <summary>决策时本阵守备队数（用于编年史对照，展示"空档"确实出现）。</summary>
+        private int homeGarrisonAtDecision;
+
         public AiBrain(BattleSimulation sim)
         {
             this.sim = sim;
@@ -42,18 +51,43 @@ namespace ChinaBettle.Battle
 
         public void Think(float now)
         {
-            LastGate = EvaluateGate(now);
-
-            // ① 强复核：存疑档 / 可信档撞桶 / 桶 <0.3 → 冻结全部高利害行动（TRUST-07）。
-            if (LastGate == DecisionGate.ForceRecheck && !sim.AiIsFrozen(now))
+            // ── AI-06⑤：抽调窗口的关闭必须在最前面处理 ──
+            // 若放在 TryRespondToDeceptionByDiverting 内部，会被"冻结提前 return"绕过，
+            // 导致抽调态势永续、空档不消失（另一种失衡）。故提到此处。
+            if (divertUntilSeconds >= 0f && now >= divertUntilSeconds)
             {
-                sim.EnterAiStrongRecheck(now);
-                return;
+                divertUntilSeconds = -1f;
+                sim.LogAi("秦军抽调态势结束——被抽走的方向开始补位填回（AI-06⑤ 窗口关闭）");
             }
+
+            LastGate = EvaluateGate(now);
 
             if (sim.AiIsFrozen(now))
             {
-                return; // 冻结期内保持态势，不进攻、不撤退、不调兵
+                return; // 冻结期内保持态势，不进攻、不撤退、不调兵（TRUST-07）
+            }
+
+            // ① 强复核：存疑档 / 可信档撞桶 / 桶 <0.3 → 冻结全部高利害行动（TRUST-07）。
+            //
+            // **重入保护（v1.4 修正）**：真源要求"冻结 30–60 秒后用**新鲜情报**重算再决策"，
+            // 而不是反复冻结。此前每轮决策都重新触发强复核（冻结期内从不重评门控，
+            // LastGate 恒为 ForceRecheck），于是 AI **永久瘫痪**——实测连续 240 秒无法行动，
+            // 既不能按剧本合围、也不能响应欺骗载荷。
+            // 现在：同一主题的强复核在 `StrongRecheckCooldownSeconds` 内只触发一次，
+            // 冷却期内按"无新情报可复核"处理——正常执行态势（保持战场推进，不僵死）。
+            bool recheckCoolingDown = now < recheckCooldownUntilSeconds;
+            if (LastGate == DecisionGate.ForceRecheck && !recheckCoolingDown)
+            {
+                sim.EnterAiStrongRecheck(now);
+                recheckCooldownUntilSeconds = now + sim.Rules.StrongRecheckSeconds * 2f;
+                return;
+            }
+
+            if (LastGate == DecisionGate.ForceRecheck && recheckCoolingDown)
+            {
+                // 冷却期内的存疑：不采信载荷，但**也不瘫痪**——按守势态势保持态势。
+                ApplyHoldPosture();
+                return;
             }
 
             // ② 欺骗行为（AI-05）。
@@ -113,6 +147,14 @@ namespace ChinaBettle.Battle
         {
             var qinUnits = sim.Units.Where(u => u.Alive && u.Faction == Faction.Qin && !u.IsRouted).ToList();
             if (qinUnits.Count == 0)
+            {
+                return;
+            }
+
+            // ── AI-06：欺骗战果转化——若 AI 采信了"某方向敌弱/敌退"的载荷，必须**抽调**兵力过去 ──
+            // 这是本次批次的核心：没有抽调，欺骗只改变站位、不产生战果，玩家就没有施计动机。
+            // 抽调造成【载荷指向方向的相反方向】出现可观测、可打击、有时窗的兵力空档。
+            if (TryRespondToDeceptionByDiverting(now))
             {
                 return;
             }
@@ -210,6 +252,98 @@ namespace ChinaBettle.Battle
         }
 
         /// <summary>
+        /// **AI-06 欺骗战果转化**：AI 采信了"某方向敌弱/敌退"的篡改载荷时，从**其它方向**抽调兵力前往，
+        /// 从而在被抽走兵力的方向留下**可观测、可打击、有时窗**的空档。
+        ///
+        /// 为什么必须有这一步：此前 AI 只是把整条阵线平移（"前压"/"守势"），
+        /// 骗与不骗的结果几乎一样——欺骗改变了站位却没改变**力量对比**，
+        /// 玩家于是没有施计动机。抽调让"骗"直接转化为"局部兵力优势"。
+        ///
+        /// 返回 true 表示本次已按抽调态势下达命令（调用方应跳过常规态势）。
+        /// </summary>
+        private bool TryRespondToDeceptionByDiverting(float now)
+        {
+            // 仅在 AI 采信到"敌弱"载荷、且门控允许行动时触发（AI-01 主链路的输出）。
+            // 注意：窗口关闭不在此处处理——它必须在 Think 的最前面（早于冻结判断），
+            // 否则冻结期内本函数根本不会被调用，抽调态势会永续（AI-06⑤ 失效）。
+            if (LastGate is not (DecisionGate.Act or DecisionGate.Confident))
+            {
+                return divertUntilSeconds >= 0f; // 已在抽调窗口内则继续保持
+            }
+
+            float believed = sim.LastPayloadAiSaw;
+            if (believed < 0f)
+            {
+                return false;
+            }
+
+            bool believesEnemyWeak = believed < 0.75f * sim.EffectiveStrength(Faction.Qin);
+            if (!believesEnemyWeak)
+            {
+                return false;
+            }
+
+            var cfg = sim.Rules.AiDeception;
+
+            // 载荷指向的"敌方"（赵军）主力所在方向——即 AI 认为值得压上的方向。
+            var zhaoUnits = sim.Units.Where(u => u.Alive && u.Faction == Faction.Zhao && !u.IsScout).ToList();
+            if (zhaoUnits.Count == 0)
+            {
+                return false;
+            }
+
+            var target = new MapPoint(zhaoUnits.Average(u => u.Position.X), zhaoUnits.Average(u => u.Position.Z));
+
+            // 抽调的"来源方向"＝秦军自己在本阵一侧的守备（抽调后该处战力下降，形成空档）。
+            var qinCombat = sim.Units.Where(u => u.Alive && u.Faction == Faction.Qin && !u.IsScout && !u.IsRouted).ToList();
+            if (qinCombat.Count < cfg.MinUnitsToDivert * 2)
+            {
+                return false; // 兵力太少，抽不起（否则守备被掏空到荒唐）
+            }
+
+            // 空档窗口（AI-06⑤）：到时间后不再保持抽调态势，交由常规态势接管（补位）。
+            if (divertUntilSeconds < 0f)
+            {
+                divertUntilSeconds = now + cfg.WindowSeconds;
+                var home = sim.Map.BaseOf(Faction.Qin);
+                homeGarrisonAtDecision = qinCombat.Count(u => u.Position.DistanceTo(home) <= 120f);
+                sim.LogAi(
+                    $"秦军受骗判断「赵军虚弱」——从本阵抽调约 {cfg.DiversionRatio:P0} 兵力压上，" +
+                    $"本阵守备由 {homeGarrisonAtDecision} 队降至约 {System.Math.Max(0, homeGarrisonAtDecision - DivertCount(qinCombat.Count, cfg))} 队" +
+                    $"（AI-06：空档窗口 {cfg.WindowSeconds:0}s）");
+            }
+            // 按抽调量分配：一半留守、一半压上载荷指向方向。
+            int divert = DivertCount(qinCombat.Count, cfg);
+            var home2 = sim.Map.BaseOf(Faction.Qin);
+            var garrison = qinCombat.OrderBy(u => u.Position.DistanceTo(home2)).Take(qinCombat.Count - divert).ToList();
+            var diverted = qinCombat.Except(garrison).ToList();
+
+            foreach (var unit in diverted)
+            {
+                // 压上载荷指向方向（AI 相信那里空虚）。
+                unit.MoveGoal = sim.Map.ClampToBounds(new MapPoint(
+                    target.X + (unit.Position.X < target.X ? -25f : 25f),
+                    target.Z));
+            }
+
+            foreach (var unit in garrison)
+            {
+                // 留在本阵一侧守备（这些单位被"留下"，其余被抽走 → 本阵方向出现空档）。
+                unit.MoveGoal = sim.Map.ClampToBounds(home2);
+            }
+
+            return true;
+        }
+
+        /// <summary>抽调单位数（AI-06②）：min(可用兵力 × 抽调比例, 可用兵力 − 守备下限)。</summary>
+        private static int DivertCount(int available, Foundation.AI.AiDeceptionConfig cfg)
+        {
+            int byRatio = (int)System.MathF.Round(available * cfg.DiversionRatio);
+            int byFloor = System.Math.Max(1, available - cfg.MinUnitsToDivert);
+            return System.Math.Min(byRatio, byFloor);
+        }
+
+        /// <summary>
         /// 追击态势（CP-02 ④，白起佯败诱敌）：秦军**且战且退**，把赵军往丹水南岸引，
         /// 使其脱离壁垒——这是合围的前置动作（史实："秦军佯败而走，赵军悉众追之"）。
         ///
@@ -231,10 +365,7 @@ namespace ChinaBettle.Battle
             {
                 if (unit.IsScout)
                 {
-                    float standoff = sim.Rules.ScoutSightRadius * 0.6f;
-                    unit.MoveGoal = sim.Map.ClampToBounds(new MapPoint(
-                        zhaoCentroid.X + (unit.Position.X < 0 ? -standoff : standoff),
-                        zhaoCentroid.Z - standoff));
+                    unit.MoveGoal = ScoutVantage(allowCrossRiver: false);
                     continue;
                 }
 
@@ -265,6 +396,40 @@ namespace ChinaBettle.Battle
             }
 
             sim.LogAi($"秦军追击态势（CP-02 ④）：佯败退往渡口、两翼骑兵外张（门控 {LastGate?.ToString() ?? "无情报"}）");
+        }
+
+        /// <summary>
+        /// 斥候的前出观察位（**必须考虑丹水的通行约束**）。
+        ///
+        /// 缺陷背景：原先斥候目标是"赵军质心 ± 偏移"，完全不看地形——
+        /// 直线路径撞上丹水（不可通行）后，斥候被 <c>Clamp</c> 永久挡在河边卡死
+        /// （实测：秦斥候停在 (17, 50.3) 不动，距赵军 91m，恰好超出 90m 视野 1m，
+        ///  于是 AI 情报池恒为空、AI-06 抽调永远不触发）。
+        ///
+        /// 正确做法：斥候只能**沿着渡口轴线**前出（渡口是唯一过河通道，MAP-11），
+        /// 并在河岸一侧停住——这也正好符合 VIS-01"视野需要接近"的设计意图。
+        /// </summary>
+        private MapPoint ScoutVantage(bool allowCrossRiver)
+        {
+            var ford = FindFord();
+            var enemyBase = sim.Map.BaseOf(Faction.Zhao);
+
+            if (ford is null)
+            {
+                // 无渡口的地图（教学序章）：退回直接朝敌阵方向，保留原行为。
+                return sim.Map.ClampToBounds(enemyBase);
+            }
+
+            // 沿渡口轴线**前出到对岸侧**——斥候的职责就是过河侦查，停在自家河岸等于没侦查。
+            // 距离纪律：停在"敌方射程之外、但已进入己方视野半径内"的位置。
+            // 河道宽 40m，故前出到渡口轴线、对岸侧 offset 处。
+            float offset = sim.Rules.ScoutSightRadius * 0.6f;
+            float proberZ = ford.Center.Z > enemyBase.Z
+                ? ford.Center.Z - offset   // 我方在南岸 → 前出到北岸侧
+                : ford.Center.Z + offset;  // 我方在北岸 → 前出到南岸侧
+
+            var vantage = new MapPoint(ford.Center.X, proberZ);
+            return sim.Map.ClampToBounds(allowCrossRiver ? enemyBase : vantage);
         }
 
         /// <summary>丹水渡口（嵌在不可通行河道内的可通行小体块，MAP-11）。</summary>
@@ -298,10 +463,7 @@ namespace ChinaBettle.Battle
                     // 斥候前出侦查，但**停在敌方远程射程之外**：
                     // 斥候是侦查单位（不主动接战），若贴脸敌弩兵射程（180m）会被开局秒杀，
                     // 使 ① ② 幕的目视情报链（SLICE-03①）与桶预养（TRUST-09）整体失效。
-                    float standoff = sim.Rules.ScoutSightRadius * 0.6f; // 在视野内、远离远程射程
-                    unit.MoveGoal = sim.Map.ClampToBounds(new MapPoint(
-                        zhaoCentroid.X + (unit.Position.X < 0 ? -standoff : standoff),
-                        zhaoCentroid.Z + standoff));
+                    unit.MoveGoal = ScoutVantage(allowCrossRiver: false);
                     continue;
                 }
 
