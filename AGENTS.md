@@ -4,8 +4,8 @@
 
 - **工程已初始化（2026-09-10）**：Unity 6 LTS 工程骨架已建（P2-5 落地，详见下文「Unity/C# 工程约定」）。Unity 编辑器本体经 Unity Hub 装于 Windows 侧 `D:\Unity\Hub\Editor`（版本 `6000.0.83f1`）；首次在 Windows 打开工程前注意 Hub 需登录并完成许可证激活。仓库已 `git init`，Git LFS 已本地启用。
 - **设计事实来源（按优先级）**：
-  1. [`Docs/关键数值与规则真源表_v1.4.md`](Docs/关键数值与规则真源表_v1.4.md)（《关键数值与规则真源表》）——跨文档复用的阈值/公式/CD/验收项的**唯一真源**；改数值先改此表再同步引用。
-  2. [`Docs/情报与可信度系统详细规格_v1.2.md`](Docs/情报与可信度系统详细规格_v1.2.md)（《情报与可信度系统详细规格 v1.2》，含 2026-09-10 勘误与边界闭合批、2026-09-11 长平战役批）——情报生成、可信度公式、AI 信任桶（无方向载荷采信度/桶预养）、欺骗技能施计窗口+痕迹存续/识破、两类强制复核、UI 呈现、数据 schema 的规则真源。
+  1. [`Docs/关键数值与规则真源表_v1.5.md`](Docs/关键数值与规则真源表_v1.5.md)（《关键数值与规则真源表》）——跨文档复用的阈值/公式/CD/验收项的**唯一真源**；改数值先改此表再同步引用。
+  2. [`Docs/情报与可信度系统详细规格_v1.3.md`](Docs/情报与可信度系统详细规格_v1.3.md)（《情报与可信度系统详细规格 v1.3》，含 2026-09-10 勘误与边界闭合批、2026-09-11 长平战役批、2026-09-11 综合可信度算法升级批 INTEL-11）——情报生成、可信度公式、AI 信任桶（无方向载荷采信度/桶预养）、欺骗技能施计窗口+痕迹存续/识破、两类强制复核、UI 呈现、数据 schema 的规则真源。
   3. [`Docs/游戏设计文档_v1.3.md`](Docs/游戏设计文档_v1.3.md)（GDD v1.2，修订中）——总体设计；5 项 P0 与 9 项 P1 已全部关闭（双层时间、诡道技能槽位/反制、兵种克制/地形、战斗士气/补给/胜负、AI 优先级与玩家画像、幕僚系统、Unity 6 LTS、权威服务器架构），见附录 A；v1.2 为边界闭合批。
   4. [`Docs/游戏设计文档_v1.0.md`](Docs/游戏设计文档_v1.0.md) + [`Docs/游戏设计文档_v1.0_审校意见.md`](Docs/游戏设计文档_v1.0_审校意见.md)——历史基线与审校意见（P2 十二项中 P2-1/P2-7/P2-10 已关闭，其余待 P2 批合入）。
   5. 从属文档：[`Docs/基础兵种数值表_v0.3.md`](Docs/基础兵种数值表_v0.3.md)（含 COMBAT-16 地形减速 ×0.6 与赵骑地形 TTK 验算）、[`Docs/首发12计技能列表_v1.2.md`](Docs/首发12计技能列表_v1.2.md)（火攻已补效果；反间计 v1.2 定案为剧本事件，其余 4 计仍为机制草案）。
@@ -44,7 +44,7 @@
 - **asmdef 分层（依赖只能向下，禁止反向/环）**：
   - `ChinaBettle.Foundation`：纯 C#、**零 UnityEngine 依赖**（`noEngineReferences: true`），承载全部核心规则公式——可信度、信任桶/门控、幕僚代理信号（TRUST-10/12）、结阵反骑与火区结算（COMBAT-17/SKILL-03）、克制环/伤害/士气、双层时钟、补给饥饿、技能数据定义、目标优先级、AI 欺骗参数。**权威端与未来服务端共用此层。**
   - `ChinaBettle.Time / Units / Intel / Stratagems / AI / Battle / Game`：依次向上，可用 UnityEngine；`Game` 为最顶层引导。
-  - 改公式先改 Foundation 纯逻辑，在 `Assets/Tests/` 加/改 EditMode 测试锁定真源算例（已锁定：fresh75、aged68、§4.1 预养链路、桶 0.586/0.20、异质信源识破、痕迹 10 分钟不刷新、克制环、伤害保底、谋略点经济、反思负反馈 ×0.5、幕僚信号三档与性格偏移、结阵移速 ×0.8/反噬 6 点、火区 8 点/2 秒、AI 欺骗 0.7 倍率与 30 点/90s）。
+  - 改公式先改 Foundation 纯逻辑，在 `Assets/Tests/` 加/改 EditMode 测试锁定真源算例（已锁定：fresh75、aged68、§4.1 预养链路、桶 0.586/0.20、异质信源识破、痕迹 10 分钟不刷新、克制环、伤害保底、谋略点经济、反思负反馈 ×0.5、幕僚信号三档与性格偏移、结阵移速 ×0.8/反噬 6 点、火区 8 点/2 秒、AI 欺骗 0.7 倍率与 30 点/90s、**斥候视锥 60°/近距 50m/停留 8s 与地形遮蔽（VIS-01/02/03）**、**诱导窗口开/关窗与损失门槛 30%（CP-09）**）。
 - **语言级别与 API 面（C# 9 / .NET Standard 2.1；2026-09-11 全量修复后定型）**：Unity 6 的脚本语言级别是 **C# 9**、API 面是 **.NET Standard 2.1**。下列写法在桌面 `dotnet`（默认 latest）能过、在 Unity 里必炸，**一律禁用**：
   - `file-scoped namespace`（`namespace X;`，C# 10）→ 用块式 `namespace X { }`。
   - `record struct`（C# 10）→ 手写 `readonly struct` + `IEquatable<T>` + `==/!=`（参照 `Scripts/Foundation/Map/MapPoint.cs`、`Scripts/Intel/IntelRecord.cs` 的 `IntelPayload`）。
@@ -55,6 +55,8 @@
   - **命令行闸门**：`.tmp-dotnet/ChinaBettle.Cs9Check.csproj`（`netstandard2.1` + `LangVersion 9.0`，gitignored）编译 Foundation/Intel/Units/Stratagems/AI/Battle 纯逻辑源码，`dotnet build` 即可在不开 Unity 时拦住上述问题。**Game / Editor / Tests 三个程序集依赖 UnityEngine 或 Unity 定制 NUnit，闸门覆盖不到，只有 Unity batchmode 能验证。**
   - Unity 的 NUnit 是定制版 3.5（`com.unity.ext.nunit` 2.0.5），**没有 `Assert.Multiple`**（官方 NuGet NUnit 有，所以命令行闸门察觉不到）——测试里不要用。
   - 跑 EditMode 测试：`Unity.exe -batchmode -nographics -projectPath <根> -logFile <.tmp-dotnet/unity-tests.log> -runTests -testPlatform EditMode -testResults <.tmp-dotnet/editmode-results.xml>`。**不要加 `-quit`**——它会连测试一起跳过、且不产出 `results.xml`；只有「仅编译不跑测试」时才配 `-quit`。
+    - **本机环境坑（2026-09-11 实测）**：①bash 里直接起 Unity 会因缺 `ALLUSERSPROFILE/PROGRAMDATA/APPDATA/PATHEXT` 等环境变量导致 UPM 30s 超时退出——须先 `export` 这几个变量；②即便补了变量，仍会卡在 `AssetDatabase Refresh Start` 超时（疑与本机 `cn.tuanjie.codely.bridge` 路径包在 batchmode 下挂资产导入有关）。**在①未排查干净前，改用下面的 `.tmp-dotnet/ChinaBettle.VerifyEditMode.csproj` 通道验证。**
+  - **EditMode 等效命令行通道（推荐，2026-09-11 新增）**：`.tmp-dotnet/ChinaBettle.VerifyEditMode.csproj`（gitignored）以 `net8.0` + 官方 NUnit 3.14 编译 Foundation/Units/Intel/Stratagems/AI/**Battle** 纯逻辑源码与 `Assets/Tests/**`（**排除 `Assets/Tests/PlayMode`**——那批依赖 UnityEngine 与 `ChinaBettle.Game`，只在 Unity 内可编），`dotnet test ChinaBettle.VerifyEditMode.csproj` 即可跑全量 EditMode 用例。**这是不开 Unity 也能验证真实测试断言（不只是编译）的通道**；注意它用官方 NUnit，故仍需人工避免 `Assert.Multiple`（Unity 侧没有）。改公式后先跑它、再考虑 Unity batchmode。
   - 排错顺序：先统计错误码分布（`grep -o "error CS[0-9]*" <log> | sort | uniq -c`）。**上层程序集的错误会被下层编译失败掩盖**——Foundation 一报错，Game/Editor/Tests 的错误就都不显示，必须逐层修到 0 才会暴露下一层，别把某一轮的报错数当成全部。
 - **数值纪律（与设计文档真源表同等强制）**：
   - 禁止在逻辑代码里写魔法数字。所有阈值/CD/倍率/权重经 `*Config` record（`CredibilityConfig`/`TrustConfig`/`CombatConfig`/`SupplyConfig`/`StrategyPointConfig`/`DeceptionDetectionConfig`）注入，默认值必须等于真源表并在注释标注真源 ID（INTEL-/TRUST-/COMBAT-/FOOD-/SKILL-/DECP-）。
@@ -81,4 +83,4 @@
 
 - 设计文档放 `Docs/`，**一律使用中文文件名**并带版本号（如 `游戏设计文档_v1.0.md`、`情报与可信度系统详细规格_v1.0.md`）；路线图条目用 Markdown checkbox 跟踪（见 GDD §6）。
 - 当前从属文档：`基础兵种数值表_v0.3.md`（切片输入）、`首发12计技能列表_v1.2.md`（新增 5 计含反间计均为机制草案，火攻已定效果）。
-- 改动已实现的玩法/数值时，先改 `关键数值与规则真源表_v1.4.md`，再同步引用文档并升版本号；代码中的伪代码（C#）仅为示意，不代表最终实现。
+- 改动已实现的玩法/数值时，先改 `关键数值与规则真源表_v1.5.md`，再同步引用文档并升版本号；代码中的伪代码（C#）仅为示意，不代表最终实现。
